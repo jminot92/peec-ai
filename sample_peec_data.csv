@@ -1,0 +1,31 @@
+topic,prompt,url,source_domain,model,date,competitor,tag,answer_rank
+AI Overviews for SEO,how do ai overviews choose sources,https://mediaworks.co.uk/insights/ai-overviews-seo,mediaworks.co.uk,GPT-4.1,2026-03-18,,seo|ai visibility,2
+AI Overviews for SEO,best way to optimise for ai overviews,https://mediaworks.co.uk/insights/ai-overviews-seo,mediaworks.co.uk,Claude 3.7,2026-03-17,,seo|ai visibility,3
+AI Overviews for SEO,how do ai overviews choose sources,https://www.semrush.com/blog/ai-overviews/,semrush.com,GPT-4.1,2026-03-18,Semrush,seo|ai visibility,1
+AI Overviews for SEO,how to rank in ai overviews,https://www.searchenginejournal.com/google-ai-overviews/510264/,searchenginejournal.com,GPT-4.1,2026-03-18,,seo|ai visibility,2
+AI Overviews for SEO,best way to optimise for ai overviews,https://www.semrush.com/blog/ai-overviews/,semrush.com,Gemini 2.0,2026-03-16,Semrush,seo|ai visibility,1
+AI Overviews for SEO,how to rank in ai overviews,https://www.hubspot.com/marketing/ai-overviews,hubspot.com,Claude 3.7,2026-03-15,HubSpot,seo|ai visibility,2
+Brand Authority,how to improve brand authority in ai search,https://mediaworks.co.uk/services/digital-pr,mediaworks.co.uk,GPT-4.1,2026-03-18,,brand authority|dpr,4
+Brand Authority,why does brand authority matter for llm answers,https://mediaworks.co.uk/services/digital-pr,mediaworks.co.uk,Gemini 2.0,2026-03-14,,brand authority|dpr,4
+Brand Authority,how to improve brand authority in ai search,https://www.fractl.com/blog/building-brand-authority/,fractl.com,GPT-4.1,2026-03-18,Fractl,brand authority|dpr,1
+Brand Authority,why does brand authority matter for llm answers,https://moz.com/blog/topic-authority-in-ai-search,moz.com,Claude 3.7,2026-03-18,,brand authority|dpr,2
+Brand Authority,how to earn trust signals for llm answers,https://www.searchengineland.com/brand-mentions-ai-search-452119,searchengineland.com,GPT-4.1,2026-03-17,,brand authority|dpr,2
+Brand Authority,how to earn trust signals for llm answers,https://www.fractl.com/blog/building-brand-authority/,fractl.com,Gemini 2.0,2026-03-16,Fractl,brand authority|dpr,1
+Digital PR for AI Search,how does digital pr influence ai answers,https://mediaworks.co.uk/services/digital-pr,mediaworks.co.uk,GPT-4.1,2026-03-19,,dpr|ai visibility,2
+Digital PR for AI Search,how to get cited by ai systems,https://mediaworks.co.uk/services/digital-pr,mediaworks.co.uk,Claude 3.7,2026-03-18,,dpr|ai visibility,3
+Digital PR for AI Search,how does digital pr influence ai answers,https://www.axiapr.com/blog/ai-search-pr,axiapr.com,Gemini 2.0,2026-03-19,Axia PR,dpr|ai visibility,1
+Digital PR for AI Search,how to get cited by ai systems,https://www.searchenginejournal.com/digital-pr-ai-search/543214/,searchenginejournal.com,GPT-4.1,2026-03-19,,dpr|ai visibility,2
+Digital PR for AI Search,how to get cited by ai systems,https://www.prnewswire.com/resources/ai-search-pr-strategy.html,prnewswire.com,Claude 3.7,2026-03-15,,dpr|ai visibility,2
+Digital PR for AI Search,how to earn media mentions that shape llm answers,https://www.axiapr.com/blog/ai-search-pr,axiapr.com,GPT-4.1,2026-03-18,Axia PR,dpr|ai visibility,1
+Zero Click Search,how to win in zero click search,https://mediaworks.co.uk/insights/zero-click-search,mediaworks.co.uk,GPT-4.1,2026-03-12,,seo|content strategy,3
+Zero Click Search,how to adapt content for zero click search,https://mediaworks.co.uk/insights/zero-click-search,mediaworks.co.uk,Claude 3.7,2026-03-11,,seo|content strategy,3
+Zero Click Search,how to win in zero click search,https://www.semrush.com/blog/zero-click-search/,semrush.com,GPT-4.1,2026-03-18,Semrush,seo|content strategy,1
+Zero Click Search,how to adapt content for zero click search,https://www.searchenginejournal.com/zero-click-search-strategy/506114/,searchenginejournal.com,Gemini 2.0,2026-03-17,,seo|content strategy,2
+Zero Click Search,what content works in zero click search,https://www.hubspot.com/marketing/zero-click-search,hubspot.com,GPT-4.1,2026-03-18,HubSpot,seo|content strategy,1
+Zero Click Search,what content works in zero click search,https://www.wordtracker.com/blog/seo/zero-click-search,wordtracker.com,Claude 3.7,2026-03-16,,seo|content strategy,2
+Entity SEO,what is entity seo,https://mediaworks.co.uk/insights/entity-seo-guide,mediaworks.co.uk,GPT-4.1,2026-03-19,,entities|seo,2
+Entity SEO,how to build entity signals,https://mediaworks.co.uk/insights/entity-seo-guide,mediaworks.co.uk,Gemini 2.0,2026-03-19,,entities|seo,3
+Entity SEO,what is entity seo,https://www.searchenginejournal.com/entity-seo-guide/518520/,searchenginejournal.com,GPT-4.1,2026-03-18,,entities|seo,1
+Entity SEO,how to build entity signals,https://www.semrush.com/blog/entity-seo/,semrush.com,Claude 3.7,2026-03-18,Semrush,entities|seo,1
+Entity SEO,how to build entity signals,https://www.ahrefs.com/blog/entity-seo/,ahrefs.com,Gemini 2.0,2026-03-18,Ahrefs,entities|seo,2
+Entity SEO,how to connect brand and entity signals,https://moz.com/blog/entity-based-seo,moz.com,GPT-4.1,2026-03-17,,entities|seo,2
