@@ -33,6 +33,8 @@ def inject_styles() -> None:
         :root {
             --peec-bg: #f6f2ea;
             --peec-panel: rgba(255, 255, 255, 0.82);
+            --peec-panel-strong: rgba(255, 252, 247, 0.94);
+            --peec-card: rgba(255, 255, 255, 0.9);
             --peec-ink: #13262f;
             --peec-muted: #53656d;
             --peec-accent: #d94f30;
@@ -40,13 +42,35 @@ def inject_styles() -> None:
             --peec-mint: #5a8f7b;
             --peec-sand: #e9d7af;
             --peec-line: rgba(19, 38, 47, 0.1);
+            --peec-shadow: rgba(19, 38, 47, 0.08);
+            --peec-chip-bg: rgba(19, 38, 47, 0.06);
+            --peec-score-bg: rgba(90, 143, 123, 0.13);
+            --peec-score-ink: #2e5a49;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --peec-bg: #0f171b;
+                --peec-panel: rgba(20, 29, 35, 0.82);
+                --peec-panel-strong: rgba(24, 34, 40, 0.94);
+                --peec-card: rgba(16, 24, 30, 0.92);
+                --peec-ink: #eef3f5;
+                --peec-muted: #a8b7be;
+                --peec-accent-soft: rgba(217, 79, 48, 0.18);
+                --peec-sand: rgba(233, 215, 175, 0.16);
+                --peec-line: rgba(238, 243, 245, 0.1);
+                --peec-shadow: rgba(0, 0, 0, 0.32);
+                --peec-chip-bg: rgba(238, 243, 245, 0.08);
+                --peec-score-bg: rgba(90, 143, 123, 0.22);
+                --peec-score-ink: #cde6db;
+            }
         }
 
         .stApp {
             background:
                 radial-gradient(circle at top right, rgba(217, 79, 48, 0.16), transparent 24%),
                 radial-gradient(circle at bottom left, rgba(90, 143, 123, 0.2), transparent 26%),
-                linear-gradient(180deg, #f5efe5 0%, var(--peec-bg) 100%);
+                linear-gradient(180deg, color-mix(in srgb, var(--peec-bg) 92%, white 8%) 0%, var(--peec-bg) 100%);
             color: var(--peec-ink);
             font-family: "IBM Plex Sans", sans-serif;
         }
@@ -58,11 +82,11 @@ def inject_styles() -> None:
         }
 
         .hero-panel {
-            background: linear-gradient(135deg, rgba(255,255,255,0.88), rgba(255,247,239,0.95));
+            background: linear-gradient(135deg, var(--peec-panel-strong), var(--peec-panel));
             border: 1px solid var(--peec-line);
             border-radius: 24px;
             padding: 1.4rem 1.5rem 1.2rem 1.5rem;
-            box-shadow: 0 18px 40px rgba(19, 38, 47, 0.08);
+            box-shadow: 0 18px 40px var(--peec-shadow);
             margin-bottom: 1rem;
         }
 
@@ -71,7 +95,7 @@ def inject_styles() -> None:
             border: 1px solid var(--peec-line);
             border-radius: 20px;
             padding: 1rem 1rem 0.8rem 1rem;
-            box-shadow: 0 12px 30px rgba(19, 38, 47, 0.05);
+            box-shadow: 0 12px 30px color-mix(in srgb, var(--peec-shadow) 70%, transparent);
         }
 
         .chip-row {
@@ -86,17 +110,17 @@ def inject_styles() -> None:
             padding: 0.32rem 0.72rem;
             font-size: 0.82rem;
             font-weight: 600;
-            background: rgba(19, 38, 47, 0.06);
+            background: var(--peec-chip-bg);
             color: var(--peec-ink);
         }
 
         .chip-accent {
-            background: rgba(217, 79, 48, 0.12);
-            color: #942e18;
+            background: var(--peec-accent-soft);
+            color: var(--peec-accent);
         }
 
         .action-card {
-            background: rgba(255, 255, 255, 0.9);
+            background: var(--peec-card);
             border: 1px solid var(--peec-line);
             border-radius: 18px;
             padding: 1rem;
@@ -124,20 +148,50 @@ def inject_styles() -> None:
             border-radius: 999px;
             font-weight: 700;
             font-size: 0.84rem;
-            background: rgba(90, 143, 123, 0.13);
-            color: #2e5a49;
+            background: var(--peec-score-bg);
+            color: var(--peec-score-ink);
         }
 
         [data-testid="stMetric"] {
-            background: rgba(255, 255, 255, 0.78);
+            background: var(--peec-card);
             border: 1px solid var(--peec-line);
             border-radius: 18px;
             padding: 0.8rem 0.9rem;
         }
 
+        [data-testid="stMetricLabel"],
+        [data-testid="stMetricValue"],
+        [data-testid="stMetricDelta"],
+        [data-testid="stMetricDeltaDescription"] {
+            color: var(--peec-ink) !important;
+        }
+
         [data-testid="stSidebar"] {
-            background: rgba(255, 250, 244, 0.96);
+            background: linear-gradient(180deg, var(--peec-panel-strong), var(--peec-panel));
             border-right: 1px solid var(--peec-line);
+        }
+
+        [data-testid="stSidebar"] label,
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] span,
+        [data-testid="stSidebar"] .stMarkdown {
+            color: var(--peec-ink) !important;
+        }
+
+        [data-baseweb="tab-list"] button {
+            color: var(--peec-muted) !important;
+        }
+
+        [data-baseweb="tab-list"] button[aria-selected="true"] {
+            color: var(--peec-accent) !important;
+        }
+
+        [data-baseweb="tab-highlight"] {
+            background-color: var(--peec-accent) !important;
+        }
+
+        [data-baseweb="tab-border"] {
+            background-color: var(--peec-line) !important;
         }
 
         .small-note {
