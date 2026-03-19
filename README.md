@@ -33,8 +33,16 @@ You can use either:
 
 If the key can list projects, the app shows a project multiselect in the sidebar so you can choose live and pitch projects without editing secrets.
 
-The app uses a fixed lookback preset in the UI: `7`, `14`, or `30` days. Default is `30` days.
-This keeps the fetch predictable and avoids exposing raw connection controls in the interface.
+The app supports these fetch windows in the UI:
+
+- `7` days
+- `14` days
+- `30` days
+- `60` days
+- `90` days
+- custom date range
+
+Start narrow for weekly actions and use the custom range only when you need a broader audit.
 
 ## Streamlit secrets
 
@@ -46,6 +54,8 @@ PEEC_PROJECT_ID = "optional-project-id"
 PEEC_API_BASE_URL = "https://api.peec.ai/customer/v1"
 PEEC_OWNED_DOMAINS = "mediaworks.co.uk"
 ```
+
+`PEEC_OWNED_DOMAINS` is optional and is now configured through secrets only, not through the sidebar.
 
 An example file is included at `.streamlit/secrets.toml.example`.
 

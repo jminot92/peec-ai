@@ -1321,14 +1321,7 @@ def main() -> None:
 
     with st.sidebar:
         st.header("Data setup")
-        owned_domain_input = st.text_area(
-            "Owned domains",
-            value=default_owned_domains,
-            help="Comma-separated root domains used to classify owned pages.",
-        )
-        st.caption("Rows with a blank competitor are treated as external unless their domain matches the owned list.")
-
-        owned_domains = [extract_domain(domain) for domain in owned_domain_input.split(",")]
+        owned_domains = [extract_domain(domain) for domain in default_owned_domains.split(",")]
         owned_domains = [domain for domain in owned_domains if domain]
 
         if not default_api_key:
@@ -1365,33 +1358,52 @@ def main() -> None:
                     "status": project_status,
                 }
 
+        sorted_project_labels = sorted(project_lookup.keys(), key=lambda value: value.lower())
         default_labels = [
             label
-            for label, project in project_lookup.items()
+            for label in sorted_project_labels
+            for project in [project_lookup[label]]
             if project["id"] in default_project_ids
         ]
         if not default_labels and len(project_lookup) == 1:
-            default_labels = list(project_lookup.keys())
-        if not default_labels and project_lookup:
-            default_labels = list(project_lookup.keys())[:1]
+            default_labels = sorted_project_labels
+        if not default_labels and sorted_project_labels:
+            default_labels = sorted_project_labels[:1]
 
         selected_project_labels = st.multiselect(
             "Projects",
-            options=list(project_lookup.keys()),
+            options=sorted_project_labels,
             default=default_labels,
             help="Choose one or more PEEC projects to combine in the same action room.",
         )
         selected_projects = [project_lookup[label] for label in selected_project_labels]
 
-        lookback_days = st.selectbox(
+        lookback_option = st.selectbox(
             "Lookback window",
-            options=[7, 14, 30],
-            index=[7, 14, 30].index(DEFAULT_API_FETCH_DAYS),
-            format_func=lambda value: f"Last {value} days",
-            help="Fixed windows keep the fetch predictable. The app uses the selected project set and caps the fetch internally.",
+            options=["Last 7 days", "Last 14 days", "Last 30 days", "Last 60 days", "Last 90 days", "Custom range"],
+            index=2,
+            help="Start with a shorter window for weekly actions. Use a custom range only when you need a broader audit.",
         )
-        fetch_start = (pd.Timestamp(today) - pd.Timedelta(days=lookback_days - 1)).date()
-        fetch_dates = (fetch_start, today)
+        if lookback_option == "Custom range":
+            custom_dates = st.date_input(
+                "Custom fetch range",
+                value=(
+                    (pd.Timestamp(today) - pd.Timedelta(days=DEFAULT_API_FETCH_DAYS - 1)).date(),
+                    today,
+                ),
+                max_value=today,
+                help="Use the narrowest range that answers the question to keep API usage predictable.",
+            )
+            if not isinstance(custom_dates, tuple) or len(custom_dates) != 2:
+                custom_dates = (
+                    (pd.Timestamp(today) - pd.Timedelta(days=DEFAULT_API_FETCH_DAYS - 1)).date(),
+                    today,
+                )
+            fetch_dates = custom_dates
+        else:
+            lookback_days = int(lookback_option.split()[1])
+            fetch_start = (pd.Timestamp(today) - pd.Timedelta(days=lookback_days - 1)).date()
+            fetch_dates = (fetch_start, today)
         fetch_api = st.button("Fetch latest PEEC data", use_container_width=True)
 
         st.caption("The app fetches metadata plus a capped URLs report per selected project. PEEC documents a limit of 200 requests per minute per project.")
@@ -1464,9 +1476,6 @@ def main() -> None:
     if source_df is None:
         display_schema_help()
         st.stop()
-
-    owned_domains = [extract_domain(domain) for domain in owned_domain_input.split(",")]
-    owned_domains = [domain for domain in owned_domains if domain]
 
     try:
         peec_df, metadata = normalise_peec_data(source_df, owned_domains)
