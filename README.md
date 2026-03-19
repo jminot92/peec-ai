@@ -1,6 +1,6 @@
 # PEEC Action Room
 
-Streamlit app for turning PEEC AI answer data into weekly SEO/content and DPR action lists.
+Streamlit app for exploring PEEC AI answer data while the next insight layer is being rebuilt.
 
 ## What the app does
 
@@ -8,12 +8,8 @@ Streamlit app for turning PEEC AI answer data into weekly SEO/content and DPR ac
 - lets you choose one or more PEEC projects directly in the interface
 - classifies rows into owned, competitor, and external influence
 - weights API rows using `usage_count` so aggregated report rows behave like observations
-- calculates topic-level content gaps using rule-based logic
-- shows owned pages already influencing answers
-- shows competitor pages influencing answers
-- shows external domains shaping answers for DPR
-- generates prioritised weekly actions with a priority score
-- exports combined, SEO/content, and DPR action lists as CSV
+- shows a baseline PEEC workspace with filters, source mix, top domains, and raw filtered rows
+- exports the currently filtered PEEC dataset as CSV
 
 ## PEEC API
 
@@ -42,7 +38,7 @@ The app supports these fetch windows in the UI:
 - `90` days
 - custom date range
 
-Start narrow for weekly actions and use the custom range only when you need a broader audit.
+Start narrow and use the custom range only when you need a broader audit.
 
 ## Streamlit secrets
 
@@ -67,9 +63,8 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-## Notes on the rule engine
+## Current state
 
-- Content actions are prioritised by citation volume, prompt gaps, competitor share, external share, and recent momentum.
-- DPR actions are prioritised by external domain influence, low owned share, competitor pressure, model breadth, and recent momentum.
-- Weekly momentum compares the latest 7 days in the selected range to the previous 7 days.
+- The previous weekly action and tabbed insight layer has been removed.
+- The app is currently a baseline PEEC data workspace so new insight modules can be added one by one.
 - API rows are weighted by `usage_count` when available.

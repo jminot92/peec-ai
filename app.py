@@ -1539,234 +1539,100 @@ def main() -> None:
         st.warning("No rows match the current filters.")
         st.stop()
 
-    insights = build_insight_bundle(filtered_df)
-    topic_summary = insights.topic_summary
-    owned_pages = insights.owned_pages
-    competitor_pages = insights.competitor_pages
-    external_domains = insights.external_domains
-    content_actions = insights.content_actions
-    dpr_actions = insights.dpr_actions
-    all_actions = insights.all_actions
-
     latest_date = filtered_df["date"].max().date()
     earliest_date = filtered_df["date"].min().date()
-    action_window = f"{earliest_date.isoformat()} to {latest_date.isoformat()}"
+    data_window = f"{earliest_date.isoformat()} to {latest_date.isoformat()}"
 
     total_weight = max(filtered_df["observation_weight"].sum(), 1.0)
     project_count = filtered_df["project"].replace("", pd.NA).dropna().nunique()
-    top_owned_share = (
-        filtered_df.loc[filtered_df["source_type"] == "owned", "observation_weight"].sum() / total_weight
-    )
-    top_competitor_share = (
-        filtered_df.loc[filtered_df["source_type"] == "competitor", "observation_weight"].sum() / total_weight
-    )
-    top_external_share = (
-        filtered_df.loc[filtered_df["source_type"] == "external", "observation_weight"].sum() / total_weight
-    )
+    prompt_count = filtered_df["prompt"].nunique()
+    topic_count = filtered_df["topic"].nunique()
+    url_count = filtered_df["url"].nunique()
+    domain_count = filtered_df["source_domain"].nunique()
+    model_count = filtered_df["model"].nunique()
 
     st.caption(
-        f"Using `{source_name}`. Window: {action_window}. "
+        f"Using `{source_name}`. Window: {data_window}. "
         f"Dropped rows during normalisation: {metadata['dropped_rows']}."
     )
     if project_count > 1:
-        st.info("Actions are currently aggregated across multiple selected projects. Use the Project filter to isolate a single client or compare a smaller set.")
+        st.info("Multiple projects are loaded. Use the Project filter to isolate one client or compare a smaller set.")
+    st.info("Insight tabs and weekly actions have been removed while the app is rebuilt. This screen is now a baseline PEEC data workspace.")
 
-    metric_columns = st.columns(6)
-    metric_columns[0].metric("Topics in play", f"{topic_summary['topic'].nunique()}")
-    metric_columns[1].metric("Projects", f"{project_count or 1}")
-    metric_columns[2].metric("Owned influence share", f"{top_owned_share:.0%}")
-    metric_columns[3].metric("Competitor share", f"{top_competitor_share:.0%}")
-    metric_columns[4].metric("External share", f"{top_external_share:.0%}")
-    metric_columns[5].metric("Observations", f"{int(round(total_weight)):,}")
+    metric_columns = st.columns(7)
+    metric_columns[0].metric("Projects", f"{project_count or 1}")
+    metric_columns[1].metric("Models", f"{model_count}")
+    metric_columns[2].metric("Topics", f"{topic_count}")
+    metric_columns[3].metric("Prompts", f"{prompt_count}")
+    metric_columns[4].metric("URLs", f"{url_count}")
+    metric_columns[5].metric("Domains", f"{domain_count}")
+    metric_columns[6].metric("Observations", f"{int(round(total_weight)):,}")
 
-    tabs = st.tabs(
-        [
-            "Weekly Actions",
-            "Content Gaps",
-            "Influence Map",
-            "Exports",
+    overview_columns = st.columns(2)
+    with overview_columns[0]:
+        st.subheader("Source Mix")
+        source_mix = (
+            filtered_df.groupby("source_type", dropna=False)["observation_weight"]
+            .sum()
+            .rename("observations")
+            .reset_index()
+            .sort_values("observations", ascending=False)
+        )
+        if source_mix.empty:
+            st.info("No source mix is available for the current filters.")
+        else:
+            source_mix["share"] = (source_mix["observations"] / total_weight * 100).round(1)
+            st.dataframe(source_mix, use_container_width=True, hide_index=True)
+
+    with overview_columns[1]:
+        st.subheader("Top Domains")
+        top_domains = (
+            filtered_df.groupby(["source_domain", "source_type"], dropna=False)["observation_weight"]
+            .sum()
+            .rename("observations")
+            .reset_index()
+            .sort_values("observations", ascending=False)
+            .head(15)
+        )
+        if top_domains.empty:
+            st.info("No domains are available for the current filters.")
+        else:
+            st.dataframe(top_domains, use_container_width=True, hide_index=True)
+
+    st.subheader("Filtered PEEC Data")
+    preview_columns = [
+        column
+        for column in [
+            "project",
+            "project_status",
+            "topic",
+            "prompt",
+            "url",
+            "source_domain",
+            "source_type",
+            "competitor",
+            "model",
+            "date",
+            "tag",
+            "observation_weight",
+            "usage_count",
+            "citation_count",
+            "citation_rate",
         ]
+        if column in filtered_df.columns
+    ]
+    st.dataframe(
+        filtered_df[preview_columns].sort_values(["date", "project", "topic"], ascending=[False, True, True]),
+        use_container_width=True,
+        hide_index=True,
     )
-
-    with tabs[0]:
-        st.subheader("Priority queue")
-        render_action_cards(all_actions)
-        if not all_actions.empty:
-            st.dataframe(
-                all_actions[
-                    [
-                        "team",
-                        "topic",
-                        "opportunity_type",
-                        "target",
-                        "priority_score",
-                        "priority_band",
-                        "recommendation",
-                        "why_now",
-                    ]
-                ],
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "priority_score": st.column_config.ProgressColumn(
-                        "Priority",
-                        min_value=0,
-                        max_value=100,
-                        format="%d",
-                    ),
-                },
-            )
-
-        team_columns = st.columns(2)
-        with team_columns[0]:
-            st.markdown("#### SEO / Content actions")
-            if content_actions.empty:
-                st.info("No content actions triggered.")
-            else:
-                st.dataframe(
-                    content_actions[
-                        [
-                            "topic",
-                            "opportunity_type",
-                            "target",
-                            "priority_score",
-                            "recommendation",
-                            "why_now",
-                        ]
-                    ],
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "priority_score": st.column_config.ProgressColumn(
-                            "Priority",
-                            min_value=0,
-                            max_value=100,
-                            format="%d",
-                        )
-                    },
-                )
-
-        with team_columns[1]:
-            st.markdown("#### DPR actions")
-            if dpr_actions.empty:
-                st.info("No DPR actions triggered.")
-            else:
-                st.dataframe(
-                    dpr_actions[
-                        [
-                            "topic",
-                            "opportunity_type",
-                            "target",
-                            "priority_score",
-                            "recommendation",
-                            "why_now",
-                        ]
-                    ],
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "priority_score": st.column_config.ProgressColumn(
-                            "Priority",
-                            min_value=0,
-                            max_value=100,
-                            format="%d",
-                        )
-                    },
-                )
-
-    with tabs[1]:
-        st.subheader("Topic-level content gaps")
-        content_gap_view = topic_summary.copy()
-        content_gap_view["owned_share"] = to_percentage(content_gap_view["owned_share"])
-        content_gap_view["competitor_share"] = to_percentage(content_gap_view["competitor_share"])
-        content_gap_view["external_share"] = to_percentage(content_gap_view["external_share"])
-        content_gap_view["gap_prompt_ratio"] = to_percentage(content_gap_view["gap_prompt_ratio"])
-        st.dataframe(
-            content_gap_view[
-                [
-                    "topic",
-                    "citations",
-                    "prompts",
-                    "prompt_gaps",
-                    "gap_prompt_ratio",
-                    "owned_share",
-                    "competitor_share",
-                    "external_share",
-                    "target_owned_url",
-                    "lead_competitor",
-                    "lead_competitor_url",
-                ]
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
-        st.bar_chart(
-            topic_summary.set_index("topic")[
-                ["owned_citations", "competitor_citations", "external_citations"]
-            ]
-        )
-
-    with tabs[2]:
-        st.subheader("Owned pages already influencing answers")
-        if owned_pages.empty:
-            st.info("No owned pages were identified. Check the owned domain list in the sidebar.")
-        else:
-            st.dataframe(
-                owned_pages,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        st.subheader("Competitor pages influencing answers")
-        if competitor_pages.empty:
-            st.info("No competitor pages were detected for the current filters.")
-        else:
-            st.dataframe(
-                competitor_pages,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        st.subheader("External domains shaping answers for DPR")
-        if external_domains.empty:
-            st.info("No external domains were detected for the current filters.")
-        else:
-            st.dataframe(
-                external_domains,
-                use_container_width=True,
-                hide_index=True,
-            )
-
-    with tabs[3]:
-        st.subheader("Export action lists")
-        if all_actions.empty:
-            st.info("No actions are available for export.")
-        else:
-            export_columns = st.columns(3)
-            with export_columns[0]:
-                dataframe_with_exports(
-                    "combined action list",
-                    all_actions,
-                    "peec_weekly_actions.csv",
-                )
-            with export_columns[1]:
-                if content_actions.empty:
-                    st.info("No SEO / Content actions to export.")
-                else:
-                    dataframe_with_exports(
-                        "SEO / Content actions",
-                        content_actions,
-                        "peec_content_actions.csv",
-                    )
-            with export_columns[2]:
-                if dpr_actions.empty:
-                    st.info("No DPR actions to export.")
-                else:
-                    dataframe_with_exports(
-                        "DPR actions",
-                        dpr_actions,
-                        "peec_dpr_actions.csv",
-                    )
+    st.download_button(
+        "Export filtered PEEC data",
+        filtered_df.to_csv(index=False).encode("utf-8"),
+        file_name="peec_filtered_data.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
 
 
 if __name__ == "__main__":
