@@ -9,6 +9,7 @@ Streamlit app for exploring PEEC AI answer data while the next insight layer is 
 - classifies rows into owned, competitor, and external influence
 - weights API rows using `usage_count` so aggregated report rows behave like observations
 - shows a baseline PEEC workspace with filters, source mix, top domains, and raw filtered rows
+- includes `Suggestion 1`, a PEEC-only beta for new page opportunities
 - exports the currently filtered PEEC dataset as CSV
 
 ## PEEC API
@@ -67,4 +68,5 @@ python -m streamlit run app.py
 
 - The previous weekly action and tabbed insight layer has been removed.
 - The app is currently a baseline PEEC data workspace so new insight modules can be added one by one.
+- `Suggestion 1` is the first rebuilt module and focuses on new page opportunities for content teams.
 - API rows are weighted by `usage_count` when available.

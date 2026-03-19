@@ -897,6 +897,142 @@ def build_topic_summary(df: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def sample_weighted_values(df: pd.DataFrame, value_column: str, limit: int = 3) -> str:
+    if df.empty:
+        return ""
+    weights = (
+        df.groupby(value_column, dropna=True)["observation_weight"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+    values = [str(value) for value in weights.index.tolist()[:limit] if str(value).strip()]
+    return " | ".join(values)
+
+
+def suggest_page_format(prompt_count: int, gap_ratio: float) -> str:
+    if prompt_count >= 5 or gap_ratio >= 0.75:
+        return "Topic hub"
+    if prompt_count >= 3:
+        return "Deep guide"
+    return "Focused page"
+
+
+def build_new_page_opportunities(df: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "topic",
+        "opportunity_type",
+        "suggested_page_format",
+        "priority_score",
+        "priority_band",
+        "prompts",
+        "sample_prompts",
+        "owned_share",
+        "competitor_share",
+        "external_share",
+        "existing_owned_page",
+        "lead_competitor",
+        "lead_competitor_url",
+        "dominant_external_domain",
+        "rationale",
+    ]
+    if df.empty:
+        return pd.DataFrame(columns=columns)
+
+    topic_summary = build_topic_summary(df)
+    if topic_summary.empty:
+        return pd.DataFrame(columns=columns)
+
+    max_citations = max(topic_summary["citations"].max(), 1)
+    external_by_topic = (
+        df[df["source_type"] == "external"]
+        .groupby("topic")
+        .agg(
+            dominant_external_domain=("source_domain", lambda series: top_weighted_value(df.loc[series.index], "source_domain")),
+        )
+        .reset_index()
+    )
+    prompt_examples = (
+        df.groupby("topic")
+        .agg(sample_prompts=("prompt", lambda series: sample_weighted_values(df.loc[series.index], "prompt", limit=3)))
+        .reset_index()
+    )
+    topic_summary = topic_summary.merge(external_by_topic, on="topic", how="left")
+    topic_summary = topic_summary.merge(prompt_examples, on="topic", how="left")
+
+    opportunities: list[dict[str, object]] = []
+    for row in topic_summary.itertuples(index=False):
+        no_owned_presence = row.owned_citations == 0
+        low_owned_presence = row.owned_share < 0.35
+        broad_gap = row.gap_prompt_ratio >= 0.33 or row.prompt_gaps >= 1
+        strong_demand = row.citations >= 3 and row.prompts >= 2
+        non_owned_dominance = (row.competitor_share + row.external_share) >= 0.6
+
+        if not strong_demand:
+            continue
+
+        if no_owned_presence and non_owned_dominance:
+            opportunity_type = "Net-new page"
+        elif low_owned_presence and broad_gap and row.prompts >= 3 and non_owned_dominance:
+            opportunity_type = "Supporting page"
+        else:
+            continue
+
+        volume_component = (row.citations / max_citations) * 28
+        gap_component = row.gap_prompt_ratio * 26
+        competitor_component = row.competitor_share * 18
+        external_component = row.external_share * 10
+        momentum_component = max(row.trend_ratio, 0) * 8
+        missing_owned_bonus = 10 if no_owned_presence else 0
+        priority_score = int(
+            min(
+                100,
+                round(
+                    volume_component
+                    + gap_component
+                    + competitor_component
+                    + external_component
+                    + momentum_component
+                    + missing_owned_bonus
+                ),
+            )
+        )
+
+        rationale = (
+            f"Owned share is {row.owned_share:.0%}; "
+            f"{int(row.prompt_gaps)} of {int(row.prompts)} prompts have no owned influence; "
+            f"competitor plus external share is {(row.competitor_share + row.external_share):.0%}."
+        )
+
+        opportunities.append(
+            {
+                "topic": row.topic,
+                "opportunity_type": opportunity_type,
+                "suggested_page_format": suggest_page_format(int(row.prompts), float(row.gap_prompt_ratio)),
+                "priority_score": priority_score,
+                "priority_band": score_band(priority_score),
+                "prompts": int(row.prompts),
+                "sample_prompts": row.sample_prompts or "",
+                "owned_share": round(float(row.owned_share) * 100, 1),
+                "competitor_share": round(float(row.competitor_share) * 100, 1),
+                "external_share": round(float(row.external_share) * 100, 1),
+                "existing_owned_page": row.target_owned_url or "",
+                "lead_competitor": row.lead_competitor or "",
+                "lead_competitor_url": row.lead_competitor_url or "",
+                "dominant_external_domain": row.dominant_external_domain or "",
+                "rationale": rationale,
+            }
+        )
+
+    if not opportunities:
+        return pd.DataFrame(columns=columns)
+
+    return (
+        pd.DataFrame(opportunities, columns=columns)
+        .sort_values(["priority_score", "prompts"], ascending=[False, False])
+        .reset_index(drop=True)
+    )
+
+
 def build_owned_pages(df: pd.DataFrame) -> pd.DataFrame:
     owned_rows = df[df["source_type"] == "owned"].copy()
     if owned_rows.empty:
@@ -1234,16 +1370,15 @@ def display_intro() -> None:
         """
         <div class="hero-panel">
             <div class="action-kicker">PEEC Action Room</div>
-            <h1 style="margin-bottom: 0.4rem;">Turn AI answer influence into weekly SEO and DPR actions</h1>
+            <h1 style="margin-bottom: 0.4rem;">Turn PEEC answer data into testable content insights</h1>
             <div class="small-note">
-                Pull PEEC data from the API or upload exports, classify owned and external influence, and generate weekly action lists with rule-based scoring.
+                Pull PEEC data from the API, inspect the answer landscape, and test one insight module at a time.
             </div>
             <div class="chip-row">
-                <span class="chip chip-accent">Not a passive dashboard</span>
-                <span class="chip">Topic gaps</span>
-                <span class="chip">Owned influence</span>
-                <span class="chip">Competitor pressure</span>
-                <span class="chip">DPR targeting</span>
+                <span class="chip chip-accent">Rebuild in progress</span>
+                <span class="chip">PEEC API</span>
+                <span class="chip">Baseline workspace</span>
+                <span class="chip">New page opportunities</span>
             </div>
         </div>
         """,
@@ -1557,7 +1692,7 @@ def main() -> None:
     )
     if project_count > 1:
         st.info("Multiple projects are loaded. Use the Project filter to isolate one client or compare a smaller set.")
-    st.info("Insight tabs and weekly actions have been removed while the app is rebuilt. This screen is now a baseline PEEC data workspace.")
+    st.info("The app is being rebuilt one module at a time. Suggestion 1 below is a PEEC-only beta for new page opportunities.")
 
     metric_columns = st.columns(7)
     metric_columns[0].metric("Projects", f"{project_count or 1}")
@@ -1567,6 +1702,36 @@ def main() -> None:
     metric_columns[4].metric("URLs", f"{url_count}")
     metric_columns[5].metric("Domains", f"{domain_count}")
     metric_columns[6].metric("Observations", f"{int(round(total_weight)):,}")
+
+    st.subheader("Suggestion 1: New Page Opportunities")
+    st.caption("PEEC-only beta. This flags answer-space gaps that look like new-page candidates. It does not yet use a full owned page inventory, so treat it as directional.")
+    new_page_opportunities = build_new_page_opportunities(filtered_df)
+    if new_page_opportunities.empty:
+        st.info("No new page opportunities were triggered for the current filters.")
+    else:
+        st.dataframe(
+            new_page_opportunities,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "priority_score": st.column_config.ProgressColumn(
+                    "Priority",
+                    min_value=0,
+                    max_value=100,
+                    format="%d",
+                ),
+                "owned_share": st.column_config.NumberColumn("Owned %", format="%.1f"),
+                "competitor_share": st.column_config.NumberColumn("Competitor %", format="%.1f"),
+                "external_share": st.column_config.NumberColumn("External %", format="%.1f"),
+            },
+        )
+        st.download_button(
+            "Export new page opportunities",
+            new_page_opportunities.to_csv(index=False).encode("utf-8"),
+            file_name="peec_new_page_opportunities.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
 
     overview_columns = st.columns(2)
     with overview_columns[0]:
