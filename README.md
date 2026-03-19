@@ -4,7 +4,7 @@ Streamlit app for turning PEEC AI answer data into weekly SEO/content and DPR ac
 
 ## What the app does
 
-- pulls source URL data from the PEEC Customer API or ingests flat exports
+- pulls source URL data directly from the PEEC Customer API
 - lets you choose one or more PEEC projects directly in the interface
 - classifies rows into owned, competitor, and external influence
 - weights API rows using `usage_count` so aggregated report rows behave like observations
@@ -15,9 +15,7 @@ Streamlit app for turning PEEC AI answer data into weekly SEO/content and DPR ac
 - generates prioritised weekly actions with a priority score
 - exports combined, SEO/content, and DPR action lists as CSV
 
-## Input options
-
-### PEEC API
+## PEEC API
 
 The app can fetch directly from the PEEC Customer API using:
 
@@ -35,32 +33,8 @@ You can use either:
 
 If the key can list projects, the app shows a project multiselect in the sidebar so you can choose live and pitch projects without editing secrets.
 
-### Flat file
-
-Required columns:
-
-- `topic`
-- `prompt`
-- `url`
-- `source_domain`
-- `model`
-- `date`
-- `competitor`
-
-Optional columns:
-
-- `tag`
-- `source_type`
-- `answer_rank`
-- `usage_count`
-- `citation_count`
-- `retrievals`
-
-If `source_type` is not supplied, the app derives it with this logic:
-
-- domain matches the owned domain list -> `owned`
-- competitor is populated -> `competitor`
-- otherwise -> `external`
+The app uses a fixed lookback preset in the UI: `7`, `14`, or `30` days. Default is `30` days.
+This keeps the fetch predictable and avoids exposing raw connection controls in the interface.
 
 ## Streamlit secrets
 

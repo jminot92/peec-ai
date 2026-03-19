@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from io import BytesIO
+from dataclasses import dataclass
 import os
-from pathlib import Path
 import time
 from typing import Iterable
 from urllib.parse import urlparse
@@ -13,7 +12,6 @@ import requests
 import streamlit as st
 
 
-APP_DIR = Path(__file__).parent
 PEEC_API_BASE_URL = "https://api.peec.ai/customer/v1"
 REQUIRED_COLUMNS = [
     "topic",
@@ -496,21 +494,6 @@ def lookup_competitor(domain: str, brand_domains: dict[str, str]) -> str:
         if domain_matches(domain, [candidate]):
             return brand_name
     return ""
-
-
-@st.cache_data(show_spinner=False)
-def load_uploaded_data(file_name: str, file_bytes: bytes) -> pd.DataFrame:
-    suffix = Path(file_name).suffix.lower()
-    payload = BytesIO(file_bytes)
-    if suffix in {".xlsx", ".xls"}:
-        return pd.read_excel(payload)
-    return pd.read_csv(payload)
-
-
-@st.cache_data(show_spinner=False)
-def load_sample_data() -> pd.DataFrame:
-    return pd.read_csv(APP_DIR / "sample_peec_data.csv")
-
 
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_peec_projects(api_key: str, base_url: str) -> list[dict[str, object]]:
@@ -1207,6 +1190,44 @@ def build_dpr_actions(topic_summary: pd.DataFrame, df: pd.DataFrame) -> pd.DataF
     )
 
 
+@dataclass
+class InsightBundle:
+    topic_summary: pd.DataFrame
+    owned_pages: pd.DataFrame
+    competitor_pages: pd.DataFrame
+    external_domains: pd.DataFrame
+    content_actions: pd.DataFrame
+    dpr_actions: pd.DataFrame
+    all_actions: pd.DataFrame
+
+
+def build_insight_bundle(df: pd.DataFrame) -> InsightBundle:
+    topic_summary = build_topic_summary(df)
+    owned_pages = build_owned_pages(df)
+    competitor_pages = build_competitor_pages(df)
+    external_domains = build_external_domains(df)
+    content_actions = build_content_actions(topic_summary)
+    dpr_actions = build_dpr_actions(topic_summary, df)
+    action_frames = [frame for frame in [content_actions, dpr_actions] if not frame.empty]
+    if action_frames:
+        all_actions = (
+            pd.concat(action_frames, ignore_index=True)
+            .sort_values(["priority_score", "team"], ascending=[False, True])
+            .reset_index(drop=True)
+        )
+    else:
+        all_actions = pd.DataFrame()
+    return InsightBundle(
+        topic_summary=topic_summary,
+        owned_pages=owned_pages,
+        competitor_pages=competitor_pages,
+        external_domains=external_domains,
+        content_actions=content_actions,
+        dpr_actions=dpr_actions,
+        all_actions=all_actions,
+    )
+
+
 
 def display_intro() -> None:
     st.markdown(
@@ -1234,13 +1255,10 @@ def display_schema_help() -> None:
     st.markdown(
         """
         <div class="section-panel">
-            <h3>Supported inputs</h3>
+            <h3>PEEC API setup</h3>
             <p class="small-note">
-                The app can pull from the PEEC Customer API or accept a flat file with
-                <code>topic</code>, <code>prompt</code>, <code>url</code>, <code>source_domain</code>,
-                <code>model</code>, <code>date</code>, and <code>competitor</code>.
-                Optional columns: <code>tag</code>, <code>source_type</code>, <code>answer_rank</code>,
-                and <code>usage_count</code>.
+                Add <code>PEEC_API_KEY</code> to Streamlit secrets, then choose one or more PEEC projects in the sidebar.
+                The app fetches PEEC URL reports plus prompt, topic, tag, brand, and model metadata and turns them into action-led insights.
             </p>
         </div>
         """,
@@ -1297,19 +1315,12 @@ def main() -> None:
     default_api_base_url = get_secret_or_env("PEEC_API_BASE_URL", PEEC_API_BASE_URL)
     default_project_id = get_secret_or_env("PEEC_PROJECT_ID")
     today = pd.Timestamp.utcnow().date()
-    default_fetch_start = (pd.Timestamp(today) - pd.Timedelta(days=DEFAULT_API_FETCH_DAYS - 1)).date()
 
     source_df = None
-    source_name = ""
-    source_mode = "Upload file"
+    source_name = "PEEC API"
 
     with st.sidebar:
         st.header("Data setup")
-        source_mode = st.radio(
-            "Source",
-            ["PEEC API", "Upload file", "Sample data"],
-            index=0 if default_api_key else 1,
-        )
         owned_domain_input = st.text_area(
             "Owned domains",
             value=default_owned_domains,
@@ -1320,207 +1331,135 @@ def main() -> None:
         owned_domains = [extract_domain(domain) for domain in owned_domain_input.split(",")]
         owned_domains = [domain for domain in owned_domains if domain]
 
-        if source_mode == "PEEC API":
-            api_key_input = st.text_input(
-                "PEEC API key",
-                value=default_api_key,
-                type="password",
-                help="Use Streamlit secrets in production and only paste a key here for local testing.",
-            )
-            api_base_url = st.text_input("API base URL", value=default_api_base_url)
-            default_project_ids = [
-                project_id.strip()
-                for project_id in default_project_id.replace("\n", ",").split(",")
-                if project_id.strip()
-            ]
-            project_lookup: dict[str, dict[str, str]] = {}
-            project_notice = ""
-            selected_projects: list[dict[str, str]] = []
+        if not default_api_key:
+            st.error("Add `PEEC_API_KEY` to Streamlit secrets to use this app.")
+            display_schema_help()
+            st.stop()
 
-            if api_key_input:
+        default_project_ids = [
+            project_id.strip()
+            for project_id in default_project_id.replace("\n", ",").split(",")
+            if project_id.strip()
+        ]
+        project_lookup: dict[str, dict[str, str]] = {}
+
+        try:
+            projects = fetch_peec_projects(default_api_key, default_api_base_url)
+        except Exception as error:
+            st.error(str(error))
+            st.stop()
+
+        for project in projects:
+            if not isinstance(project, dict):
+                continue
+            project_id = normalise_text(project.get("id"))
+            project_name = normalise_text(project.get("name")) or project_id
+            project_status = normalise_text(project.get("status"))
+            if project_id:
+                label = build_project_label(
+                    {"id": project_id, "name": project_name, "status": project_status}
+                )
+                project_lookup[label] = {
+                    "id": project_id,
+                    "name": project_name,
+                    "status": project_status,
+                }
+
+        default_labels = [
+            label
+            for label, project in project_lookup.items()
+            if project["id"] in default_project_ids
+        ]
+        if not default_labels and len(project_lookup) == 1:
+            default_labels = list(project_lookup.keys())
+        if not default_labels and project_lookup:
+            default_labels = list(project_lookup.keys())[:1]
+
+        selected_project_labels = st.multiselect(
+            "Projects",
+            options=list(project_lookup.keys()),
+            default=default_labels,
+            help="Choose one or more PEEC projects to combine in the same action room.",
+        )
+        selected_projects = [project_lookup[label] for label in selected_project_labels]
+
+        lookback_days = st.selectbox(
+            "Lookback window",
+            options=[7, 14, 30],
+            index=[7, 14, 30].index(DEFAULT_API_FETCH_DAYS),
+            format_func=lambda value: f"Last {value} days",
+            help="Fixed windows keep the fetch predictable. The app uses the selected project set and caps the fetch internally.",
+        )
+        fetch_start = (pd.Timestamp(today) - pd.Timedelta(days=lookback_days - 1)).date()
+        fetch_dates = (fetch_start, today)
+        fetch_api = st.button("Fetch latest PEEC data", use_container_width=True)
+
+        st.caption("The app fetches metadata plus a capped URLs report per selected project. PEEC documents a limit of 200 requests per minute per project.")
+
+        if fetch_api:
+            if not selected_projects:
+                st.error("Select at least one project to fetch.")
+            else:
                 try:
-                    projects = fetch_peec_projects(api_key_input, api_base_url)
-                except Exception:
-                    project_notice = (
-                        "Could not list projects with this key. If the key is already scoped to one project, "
-                        "you can still fetch with the manual project ID field below or without a project ID."
-                    )
-                else:
-                    for project in projects:
-                        if not isinstance(project, dict):
-                            continue
-                        project_id = normalise_text(project.get("id"))
-                        project_name = normalise_text(project.get("name")) or project_id
-                        project_status = normalise_text(project.get("status"))
-                        if project_id:
-                            label = build_project_label(
-                                {"id": project_id, "name": project_name, "status": project_status}
+                    with st.spinner("Loading report data from PEEC API..."):
+                        project_frames: list[pd.DataFrame] = []
+                        loaded_project_names: list[str] = []
+                        loaded_rows = 0
+                        for project in selected_projects:
+                            project_id = project.get("id")
+                            project_name = normalise_text(project.get("name"))
+                            project_status = normalise_text(project.get("status"))
+                            metadata = fetch_peec_metadata(default_api_key, default_api_base_url, project_id)
+                            api_rows = fetch_peec_report_rows(
+                                api_key=default_api_key,
+                                base_url=default_api_base_url,
+                                project_id=project_id,
+                                start_date=fetch_dates[0].isoformat(),
+                                end_date=fetch_dates[1].isoformat(),
+                                page_size=DEFAULT_API_PAGE_SIZE,
+                                max_rows=MAX_API_ROWS,
                             )
-                            project_lookup[label] = {
-                                "id": project_id,
-                                "name": project_name,
-                                "status": project_status,
-                            }
-                    if project_lookup:
-                        default_labels = [
-                            label
-                            for label, project in project_lookup.items()
-                            if project["id"] in default_project_ids
-                        ]
-                        if not default_labels and len(project_lookup) == 1:
-                            default_labels = list(project_lookup.keys())
-                        selected_project_labels = st.multiselect(
-                            "Projects",
-                            options=list(project_lookup.keys()),
-                            default=default_labels,
-                            help="Choose one or more PEEC projects to combine in the same action room.",
-                        )
-                        selected_projects = [project_lookup[label] for label in selected_project_labels]
+                            api_df = build_dataframe_from_peec_api(
+                                api_rows,
+                                metadata,
+                                owned_domains,
+                                project_id=project_id,
+                                project_name=project_name,
+                                project_status=project_status,
+                            )
+                            project_frames.append(api_df)
+                            loaded_project_names.append(project_name or str(project_id or "Current project"))
+                            loaded_rows += len(api_df)
+                        api_df = pd.concat(project_frames, ignore_index=True) if project_frames else pd.DataFrame()
+                    st.session_state["peec_api_df"] = api_df
+                    st.session_state["peec_api_source_name"] = (
+                        f"PEEC API ({len(loaded_project_names)} projects)"
+                        if len(loaded_project_names) > 1
+                        else f"PEEC API ({loaded_project_names[0]})"
+                    )
+                    st.session_state["peec_api_window"] = (
+                        fetch_dates[0].isoformat(),
+                        fetch_dates[1].isoformat(),
+                    )
+                    st.session_state["peec_api_loaded_rows"] = loaded_rows
+                    st.session_state["peec_api_projects"] = loaded_project_names
+                except Exception as error:
+                    st.error(str(error))
 
-            listed_project_ids = {project["id"] for project in selected_projects}
-            unmatched_default_ids = [
-                project_id for project_id in default_project_ids if project_id not in listed_project_ids
-            ]
-            with st.expander("Manual project IDs", expanded=bool(unmatched_default_ids) and not selected_projects):
-                manual_project_input = st.text_area(
-                    "Project IDs",
-                    value="\n".join(unmatched_default_ids),
-                    help="Optional fallback for projects that are not listed above. Use commas or new lines.",
-                )
-            manual_project_ids = [
-                project_id.strip()
-                for project_id in manual_project_input.replace("\n", ",").split(",")
-                if project_id.strip()
-            ]
-
-            project_targets: list[dict[str, str | None]] = list(selected_projects)
-            for project_id in manual_project_ids:
-                if any(project.get("id") == project_id for project in project_targets):
-                    continue
-                project_targets.append(
-                    {
-                        "id": project_id,
-                        "name": project_id,
-                        "status": "",
-                    }
-                )
-            if not project_targets and not project_lookup:
-                project_targets = [
-                    {
-                        "id": None,
-                        "name": "Current project",
-                        "status": "",
-                    }
-                ]
-
-            fetch_dates = st.date_input(
-                "API fetch range",
-                value=(default_fetch_start, today),
-                max_value=today,
-                help="The app fetches only this window from PEEC, then applies local filters on top.",
+        if "peec_api_df" in st.session_state:
+            source_df = st.session_state["peec_api_df"]
+            source_name = st.session_state.get("peec_api_source_name", "PEEC API")
+            fetch_window = st.session_state.get("peec_api_window", ("", ""))
+            loaded_rows = st.session_state.get("peec_api_loaded_rows", 0)
+            loaded_project_names = st.session_state.get("peec_api_projects", [])
+            st.caption(
+                f"Loaded {loaded_rows:,} report rows from {fetch_window[0]} to {fetch_window[1]}."
             )
-            if not isinstance(fetch_dates, tuple) or len(fetch_dates) != 2:
-                fetch_dates = (default_fetch_start, today)
-
-            max_rows = int(
-                st.number_input(
-                    "Max API rows",
-                    min_value=1000,
-                    max_value=100000,
-                    value=MAX_API_ROWS,
-                    step=1000,
-                    help="Protects the app from pulling an unbounded report.",
-                )
-            )
-            fetch_api = st.button("Fetch from PEEC API", use_container_width=True)
-
-            if project_notice:
-                st.caption(project_notice)
-
-            if fetch_api:
-                if not api_key_input:
-                    st.error("Enter a PEEC API key or add `PEEC_API_KEY` to Streamlit secrets.")
-                elif project_lookup and not project_targets:
-                    st.error("Select at least one project to fetch.")
-                else:
-                    try:
-                        with st.spinner("Loading report data from PEEC API..."):
-                            project_frames: list[pd.DataFrame] = []
-                            loaded_project_names: list[str] = []
-                            loaded_rows = 0
-                            for project in project_targets:
-                                project_id = project.get("id")
-                                project_name = normalise_text(project.get("name"))
-                                project_status = normalise_text(project.get("status"))
-                                metadata = fetch_peec_metadata(api_key_input, api_base_url, project_id)
-                                api_rows = fetch_peec_report_rows(
-                                    api_key=api_key_input,
-                                    base_url=api_base_url,
-                                    project_id=project_id,
-                                    start_date=fetch_dates[0].isoformat(),
-                                    end_date=fetch_dates[1].isoformat(),
-                                    page_size=DEFAULT_API_PAGE_SIZE,
-                                    max_rows=max_rows,
-                                )
-                                api_df = build_dataframe_from_peec_api(
-                                    api_rows,
-                                    metadata,
-                                    owned_domains,
-                                    project_id=project_id,
-                                    project_name=project_name,
-                                    project_status=project_status,
-                                )
-                                project_frames.append(api_df)
-                                loaded_project_names.append(project_name or str(project_id or "Current project"))
-                                loaded_rows += len(api_df)
-                            api_df = pd.concat(project_frames, ignore_index=True) if project_frames else pd.DataFrame()
-                        st.session_state["peec_api_df"] = api_df
-                        st.session_state["peec_api_source_name"] = (
-                            f"PEEC API ({len(loaded_project_names)} projects)"
-                            if len(loaded_project_names) > 1
-                            else f"PEEC API ({loaded_project_names[0]})"
-                        )
-                        st.session_state["peec_api_window"] = (
-                            fetch_dates[0].isoformat(),
-                            fetch_dates[1].isoformat(),
-                        )
-                        st.session_state["peec_api_loaded_rows"] = loaded_rows
-                        st.session_state["peec_api_projects"] = loaded_project_names
-                    except Exception as error:
-                        st.error(str(error))
-
-            if "peec_api_df" in st.session_state:
-                source_df = st.session_state["peec_api_df"]
-                source_name = st.session_state.get("peec_api_source_name", "PEEC API")
-                fetch_window = st.session_state.get("peec_api_window", ("", ""))
-                loaded_rows = st.session_state.get("peec_api_loaded_rows", 0)
-                loaded_project_names = st.session_state.get("peec_api_projects", [])
-                st.caption(
-                    f"Loaded {loaded_rows:,} report rows from {fetch_window[0]} to {fetch_window[1]}."
-                )
-                if loaded_project_names:
-                    project_preview = ", ".join(loaded_project_names[:3])
-                    if len(loaded_project_names) > 3:
-                        project_preview += f" +{len(loaded_project_names) - 3} more"
-                    st.caption(f"Projects loaded: {project_preview}")
-
-        elif source_mode == "Upload file":
-            upload = st.file_uploader(
-                "Upload PEEC data",
-                type=["csv", "xlsx", "xls"],
-                help="Use the sample file if you want to inspect the app structure first.",
-            )
-            if upload is not None:
-                source_df = load_uploaded_data(upload.name, upload.getvalue())
-                source_name = upload.name
-
-        else:
-            source_df = load_sample_data()
-            source_name = "sample_peec_data.csv"
-
-    if source_mode == "Sample data" and source_df is None:
-        source_df = load_sample_data()
-        source_name = "sample_peec_data.csv"
+            if loaded_project_names:
+                project_preview = ", ".join(loaded_project_names[:3])
+                if len(loaded_project_names) > 3:
+                    project_preview += f" +{len(loaded_project_names) - 3} more"
+                st.caption(f"Projects loaded: {project_preview}")
 
     if source_df is None:
         display_schema_help()
@@ -1591,17 +1530,14 @@ def main() -> None:
         st.warning("No rows match the current filters.")
         st.stop()
 
-    topic_summary = build_topic_summary(filtered_df)
-    owned_pages = build_owned_pages(filtered_df)
-    competitor_pages = build_competitor_pages(filtered_df)
-    external_domains = build_external_domains(filtered_df)
-    content_actions = build_content_actions(topic_summary)
-    dpr_actions = build_dpr_actions(topic_summary, filtered_df)
-    all_actions = (
-        pd.concat([content_actions, dpr_actions], ignore_index=True)
-        .sort_values(["priority_score", "team"], ascending=[False, True])
-        .reset_index(drop=True)
-    )
+    insights = build_insight_bundle(filtered_df)
+    topic_summary = insights.topic_summary
+    owned_pages = insights.owned_pages
+    competitor_pages = insights.competitor_pages
+    external_domains = insights.external_domains
+    content_actions = insights.content_actions
+    dpr_actions = insights.dpr_actions
+    all_actions = insights.all_actions
 
     latest_date = filtered_df["date"].max().date()
     earliest_date = filtered_df["date"].min().date()
@@ -1822,15 +1758,6 @@ def main() -> None:
                         dpr_actions,
                         "peec_dpr_actions.csv",
                     )
-
-        st.markdown("#### Data template")
-        sample_bytes = (APP_DIR / "sample_peec_data.csv").read_bytes()
-        st.download_button(
-            "Download sample PEEC CSV",
-            sample_bytes,
-            file_name="sample_peec_data.csv",
-            mime="text/csv",
-        )
 
 
 if __name__ == "__main__":
