@@ -235,6 +235,12 @@ def normalise_text(value: object) -> str:
     return str(value).strip()
 
 
+def normalise_name_key(value: object) -> str:
+    text = normalise_text(value).lower()
+    simplified = "".join(character if character.isalnum() else " " for character in text)
+    return " ".join(simplified.split())
+
+
 def extract_domain(value: object) -> str:
     if pd.isna(value):
         return ""
@@ -495,6 +501,51 @@ def lookup_competitor(domain: str, brand_domains: dict[str, str]) -> str:
             return brand_name
     return ""
 
+
+def infer_owned_domains(
+    brands: list[dict[str, object]],
+    owned_domains: list[str],
+    project_name: str,
+) -> list[str]:
+    effective_owned_domains = {
+        extract_domain(domain)
+        for domain in owned_domains
+        if extract_domain(domain)
+    }
+    project_key = normalise_name_key(project_name)
+
+    for brand in brands:
+        if not isinstance(brand, dict):
+            continue
+        brand_name = normalise_text(brand.get("name"))
+        brand_key = normalise_name_key(brand_name)
+        raw_domains = brand.get("domains", [])
+        if not isinstance(raw_domains, list):
+            continue
+        brand_domains = {
+            extract_domain(raw_domain)
+            for raw_domain in raw_domains
+            if extract_domain(raw_domain)
+        }
+        if not brand_domains:
+            continue
+
+        is_explicitly_owned = any(
+            domain_matches(domain, effective_owned_domains)
+            for domain in brand_domains
+        )
+        name_matches_project = bool(project_key) and bool(brand_key) and (
+            brand_key == project_key
+            or brand_key.startswith(f"{project_key} ")
+            or brand_key.endswith(f" {project_key}")
+            or project_key.startswith(f"{brand_key} ")
+            or project_key.endswith(f" {brand_key}")
+        )
+        if is_explicitly_owned or name_matches_project:
+            effective_owned_domains.update(brand_domains)
+
+    return sorted(effective_owned_domains)
+
 @st.cache_data(ttl=900, show_spinner=False)
 def fetch_peec_projects(api_key: str, base_url: str) -> list[dict[str, object]]:
     client = PeecApiClient(api_key=api_key, base_url=base_url)
@@ -560,7 +611,15 @@ def build_dataframe_from_peec_api(
         for tag in metadata.get("tags", [])
         if isinstance(tag, dict) and tag.get("id")
     }
-    brand_domains = build_brand_domain_lookup(metadata.get("brands", []), owned_domains)
+    effective_owned_domains = infer_owned_domains(
+        metadata.get("brands", []),
+        owned_domains,
+        project_name,
+    )
+    brand_domains = build_brand_domain_lookup(
+        metadata.get("brands", []),
+        effective_owned_domains,
+    )
 
     rows: list[dict[str, object]] = []
     for item in api_rows:
@@ -593,6 +652,13 @@ def build_dataframe_from_peec_api(
         url = normalise_text(item.get("url"))
         source_domain = extract_domain(url)
         competitor = lookup_competitor(source_domain, brand_domains)
+        if domain_matches(source_domain, effective_owned_domains):
+            source_type = "owned"
+            competitor = ""
+        elif competitor:
+            source_type = "competitor"
+        else:
+            source_type = "external"
 
         rows.append(
             {
@@ -604,6 +670,7 @@ def build_dataframe_from_peec_api(
                 or normalise_text(prompt_meta.get("query") or prompt_meta.get("name") or prompt_meta.get("prompt")),
                 "url": url,
                 "source_domain": source_domain,
+                "source_type": source_type,
                 "model": model_id,
                 "date": format_date(item.get("date")),
                 "competitor": competitor,
@@ -1445,7 +1512,7 @@ def main() -> None:
     inject_styles()
     display_intro()
 
-    default_owned_domains = get_secret_or_env("PEEC_OWNED_DOMAINS", "mediaworks.co.uk")
+    default_owned_domains = get_secret_or_env("PEEC_OWNED_DOMAINS")
     default_api_key = get_secret_or_env("PEEC_API_KEY")
     default_api_base_url = get_secret_or_env("PEEC_API_BASE_URL", PEEC_API_BASE_URL)
     default_project_id = get_secret_or_env("PEEC_PROJECT_ID")
