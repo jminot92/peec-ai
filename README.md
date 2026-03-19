@@ -5,6 +5,7 @@ Streamlit app for turning PEEC AI answer data into weekly SEO/content and DPR ac
 ## What the app does
 
 - pulls source URL data from the PEEC Customer API or ingests flat exports
+- lets you choose one or more PEEC projects directly in the interface
 - classifies rows into owned, competitor, and external influence
 - weights API rows using `usage_count` so aggregated report rows behave like observations
 - calculates topic-level content gaps using rule-based logic
@@ -31,6 +32,8 @@ You can use either:
 
 - a project-scoped API key
 - a company API key plus `project_id`
+
+If the key can list projects, the app shows a project multiselect in the sidebar so you can choose live and pitch projects without editing secrets.
 
 ### Flat file
 
