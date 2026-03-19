@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 from io import BytesIO
+import os
 from pathlib import Path
+import time
 from typing import Iterable
 from urllib.parse import urlparse
 
 import numpy as np
 import pandas as pd
+import requests
 import streamlit as st
 
 
 APP_DIR = Path(__file__).parent
+PEEC_API_BASE_URL = "https://api.peec.ai/customer/v1"
 REQUIRED_COLUMNS = [
     "topic",
     "prompt",
@@ -22,6 +26,9 @@ REQUIRED_COLUMNS = [
 ]
 OPTIONAL_RANK_COLUMNS = ["answer_rank", "rank", "position"]
 ALLOWED_SOURCE_TYPES = {"owned", "competitor", "external"}
+DEFAULT_API_FETCH_DAYS = 30
+DEFAULT_API_PAGE_SIZE = 1000
+MAX_API_ROWS = 20000
 
 
 def inject_styles() -> None:
@@ -282,6 +289,206 @@ def first_valid(series: pd.Series) -> str:
     return values[0] if values else ""
 
 
+def top_weighted_value(df: pd.DataFrame, value_column: str) -> str:
+    if df.empty:
+        return ""
+    weights = (
+        df.groupby(value_column, dropna=True)["observation_weight"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+    return str(weights.index[0]) if not weights.empty else ""
+
+
+def get_secret_or_env(key: str, default: str = "") -> str:
+    if key in st.secrets:
+        value = st.secrets[key]
+        if value is None:
+            return default
+        return str(value).strip()
+    return os.getenv(key, default).strip()
+
+
+def format_date(value: object) -> str:
+    if pd.isna(value):
+        return ""
+    return pd.Timestamp(value).date().isoformat()
+
+
+def coerce_positive_number(value: object, default: float = 0.0) -> float:
+    numeric = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    if pd.isna(numeric):
+        return default
+    return max(float(numeric), 0.0)
+
+
+class PeecApiClient:
+    def __init__(self, api_key: str, base_url: str = PEEC_API_BASE_URL, timeout: int = 30) -> None:
+        self.api_key = api_key.strip()
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, object] | None = None,
+        json_payload: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        if not self.api_key:
+            raise ValueError("A PEEC API key is required.")
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-API-Key": self.api_key,
+        }
+        url = f"{self.base_url}/{path.lstrip('/')}"
+
+        for attempt in range(4):
+            response = requests.request(
+                method=method,
+                url=url,
+                headers=headers,
+                params=params,
+                json=json_payload,
+                timeout=self.timeout,
+            )
+            if response.status_code != 429:
+                break
+            reset_after = int(response.headers.get("X-RateLimit-Reset", "1"))
+            time.sleep(max(reset_after, 1))
+
+        try:
+            response.raise_for_status()
+        except requests.HTTPError as exc:
+            message = response.text.strip() or str(exc)
+            raise RuntimeError(f"PEEC API request failed: {message}") from exc
+
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise RuntimeError("PEEC API returned an unexpected response.")
+        return payload
+
+    def _with_project(self, project_id: str | None, params: dict[str, object] | None = None) -> dict[str, object]:
+        merged = dict(params or {})
+        if project_id:
+            merged["project_id"] = project_id
+        return merged
+
+    def _paginate(
+        self,
+        path: str,
+        *,
+        method: str = "GET",
+        project_id: str | None = None,
+        params: dict[str, object] | None = None,
+        json_payload: dict[str, object] | None = None,
+        page_size: int = DEFAULT_API_PAGE_SIZE,
+        max_rows: int = MAX_API_ROWS,
+    ) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = []
+        offset = 0
+
+        while offset < max_rows:
+            if method == "GET":
+                page_params = self._with_project(
+                    project_id,
+                    {
+                        **(params or {}),
+                        "limit": page_size,
+                        "offset": offset,
+                    },
+                )
+                payload = self._request(method, path, params=page_params)
+            else:
+                body = {
+                    **(json_payload or {}),
+                    "limit": page_size,
+                    "offset": offset,
+                }
+                if project_id:
+                    body["project_id"] = project_id
+                payload = self._request(method, path, json_payload=body)
+
+            batch = payload.get("data", [])
+            if not isinstance(batch, list):
+                raise RuntimeError("PEEC API returned an unexpected page payload.")
+            rows.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+
+        return rows
+
+    def get_projects(self) -> list[dict[str, object]]:
+        return self._paginate("projects", max_rows=1000)
+
+    def get_models(self, project_id: str | None = None) -> list[dict[str, object]]:
+        return self._paginate("models", project_id=project_id, max_rows=1000)
+
+    def get_prompts(self, project_id: str | None = None) -> list[dict[str, object]]:
+        return self._paginate("prompts", project_id=project_id, max_rows=10000)
+
+    def get_topics(self, project_id: str | None = None) -> list[dict[str, object]]:
+        return self._paginate("topics", project_id=project_id, max_rows=5000)
+
+    def get_tags(self, project_id: str | None = None) -> list[dict[str, object]]:
+        return self._paginate("tags", project_id=project_id, max_rows=5000)
+
+    def get_brands(self, project_id: str | None = None) -> list[dict[str, object]]:
+        return self._paginate("brands", project_id=project_id, max_rows=5000)
+
+    def get_urls_report(
+        self,
+        *,
+        project_id: str | None,
+        start_date: str,
+        end_date: str,
+        page_size: int = DEFAULT_API_PAGE_SIZE,
+        max_rows: int = MAX_API_ROWS,
+    ) -> list[dict[str, object]]:
+        return self._paginate(
+            "reports/urls",
+            method="POST",
+            project_id=project_id,
+            json_payload={
+                "start_date": start_date,
+                "end_date": end_date,
+                "dimensions": ["prompt_id", "model_id", "date"],
+            },
+            page_size=page_size,
+            max_rows=max_rows,
+        )
+
+
+def build_brand_domain_lookup(
+    brands: list[dict[str, object]],
+    owned_domains: list[str],
+) -> dict[str, str]:
+    lookup: dict[str, str] = {}
+    for brand in brands:
+        brand_name = normalise_text(brand.get("name") if isinstance(brand, dict) else "")
+        domains = brand.get("domains", []) if isinstance(brand, dict) else []
+        if not brand_name or not isinstance(domains, list):
+            continue
+        for raw_domain in domains:
+            domain = extract_domain(raw_domain)
+            if not domain or domain_matches(domain, owned_domains):
+                continue
+            lookup[domain] = brand_name
+    return lookup
+
+
+def lookup_competitor(domain: str, brand_domains: dict[str, str]) -> str:
+    if domain in brand_domains:
+        return brand_domains[domain]
+    for candidate, brand_name in brand_domains.items():
+        if domain_matches(domain, [candidate]):
+            return brand_name
+    return ""
+
+
 @st.cache_data(show_spinner=False)
 def load_uploaded_data(file_name: str, file_bytes: bytes) -> pd.DataFrame:
     suffix = Path(file_name).suffix.lower()
@@ -294,6 +501,124 @@ def load_uploaded_data(file_name: str, file_bytes: bytes) -> pd.DataFrame:
 @st.cache_data(show_spinner=False)
 def load_sample_data() -> pd.DataFrame:
     return pd.read_csv(APP_DIR / "sample_peec_data.csv")
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_peec_projects(api_key: str, base_url: str) -> list[dict[str, object]]:
+    client = PeecApiClient(api_key=api_key, base_url=base_url)
+    return client.get_projects()
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_peec_metadata(
+    api_key: str,
+    base_url: str,
+    project_id: str | None,
+) -> dict[str, list[dict[str, object]]]:
+    client = PeecApiClient(api_key=api_key, base_url=base_url)
+    return {
+        "prompts": client.get_prompts(project_id=project_id),
+        "topics": client.get_topics(project_id=project_id),
+        "tags": client.get_tags(project_id=project_id),
+        "models": client.get_models(project_id=project_id),
+        "brands": client.get_brands(project_id=project_id),
+    }
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def fetch_peec_report_rows(
+    api_key: str,
+    base_url: str,
+    project_id: str | None,
+    start_date: str,
+    end_date: str,
+    page_size: int,
+    max_rows: int,
+) -> list[dict[str, object]]:
+    client = PeecApiClient(api_key=api_key, base_url=base_url)
+    return client.get_urls_report(
+        project_id=project_id,
+        start_date=start_date,
+        end_date=end_date,
+        page_size=page_size,
+        max_rows=max_rows,
+    )
+
+
+def build_dataframe_from_peec_api(
+    api_rows: list[dict[str, object]],
+    metadata: dict[str, list[dict[str, object]]],
+    owned_domains: list[str],
+) -> pd.DataFrame:
+    prompts_by_id = {
+        prompt["id"]: prompt
+        for prompt in metadata.get("prompts", [])
+        if isinstance(prompt, dict) and prompt.get("id")
+    }
+    topics_by_id = {
+        topic["id"]: normalise_text(topic.get("name"))
+        for topic in metadata.get("topics", [])
+        if isinstance(topic, dict) and topic.get("id")
+    }
+    tags_by_id = {
+        tag["id"]: normalise_text(tag.get("name"))
+        for tag in metadata.get("tags", [])
+        if isinstance(tag, dict) and tag.get("id")
+    }
+    brand_domains = build_brand_domain_lookup(metadata.get("brands", []), owned_domains)
+
+    rows: list[dict[str, object]] = []
+    for item in api_rows:
+        if not isinstance(item, dict):
+            continue
+        prompt_ref = item.get("prompt", {})
+        model_ref = item.get("model", {})
+        prompt_id = normalise_text(prompt_ref.get("id") if isinstance(prompt_ref, dict) else "")
+        model_id = normalise_text(model_ref.get("id") if isinstance(model_ref, dict) else "")
+        prompt_meta = prompts_by_id.get(prompt_id, {})
+        topic_meta = prompt_meta.get("topic", {}) if isinstance(prompt_meta, dict) else {}
+        topic_id = normalise_text(topic_meta.get("id") if isinstance(topic_meta, dict) else "")
+        prompt_messages = prompt_meta.get("messages", []) if isinstance(prompt_meta, dict) else []
+        prompt_content = ""
+        if isinstance(prompt_messages, list):
+            for message in prompt_messages:
+                if not isinstance(message, dict):
+                    continue
+                prompt_content = normalise_text(message.get("content"))
+                if prompt_content:
+                    break
+        tag_values = []
+        for tag in prompt_meta.get("tags", []) if isinstance(prompt_meta, dict) else []:
+            if not isinstance(tag, dict):
+                continue
+            tag_name = tags_by_id.get(normalise_text(tag.get("id")), normalise_text(tag.get("name")))
+            if tag_name:
+                tag_values.append(tag_name)
+
+        url = normalise_text(item.get("url"))
+        source_domain = extract_domain(url)
+        competitor = lookup_competitor(source_domain, brand_domains)
+
+        rows.append(
+            {
+                "topic": topics_by_id.get(topic_id, normalise_text(topic_meta.get("name") if isinstance(topic_meta, dict) else "")),
+                "prompt": prompt_content
+                or normalise_text(prompt_meta.get("query") or prompt_meta.get("name") or prompt_meta.get("prompt")),
+                "url": url,
+                "source_domain": source_domain,
+                "model": model_id,
+                "date": format_date(item.get("date")),
+                "competitor": competitor,
+                "tag": " | ".join(sorted(set(tag_values))),
+                "usage_count": coerce_positive_number(item.get("usage_count"), default=1.0),
+                "citation_count": coerce_positive_number(item.get("citation_count"), default=0.0),
+                "retrievals": coerce_positive_number(item.get("retrievals"), default=0.0),
+                "citation_rate": coerce_positive_number(item.get("citation_rate"), default=0.0),
+                "title": normalise_text(item.get("title")),
+            }
+        )
+
+    return pd.DataFrame(rows)
 
 
 def normalise_peec_data(
@@ -313,6 +638,15 @@ def normalise_peec_data(
         working["tag"] = ""
     if "source_type" not in working.columns:
         working["source_type"] = ""
+    if "observation_weight" not in working.columns:
+        if "usage_count" in working.columns:
+            working["observation_weight"] = pd.to_numeric(working["usage_count"], errors="coerce")
+        elif "citation_count" in working.columns:
+            working["observation_weight"] = pd.to_numeric(working["citation_count"], errors="coerce")
+        elif "retrievals" in working.columns:
+            working["observation_weight"] = pd.to_numeric(working["retrievals"], errors="coerce")
+        else:
+            working["observation_weight"] = 1.0
 
     working["topic"] = working["topic"].map(normalise_text)
     working["prompt"] = working["prompt"].map(normalise_text)
@@ -361,6 +695,13 @@ def normalise_peec_data(
         derived_source_type,
     )
     working["tag_list"] = working["tag"].apply(split_tags)
+    working["observation_weight"] = (
+        pd.to_numeric(working["observation_weight"], errors="coerce").fillna(1.0).clip(lower=0.0)
+    )
+    working["observation_weight"] = working["observation_weight"].where(
+        working["observation_weight"] > 0,
+        1.0,
+    )
 
     before_rows = len(working)
     working = working.dropna(subset=["date"])
@@ -377,6 +718,7 @@ def normalise_peec_data(
         "dropped_rows": dropped_rows,
         "date_min": working["date"].min() if not working.empty else None,
         "date_max": working["date"].max() if not working.empty else None,
+        "total_observations": float(working["observation_weight"].sum()) if not working.empty else 0.0,
     }
     return working, metadata
 
@@ -430,20 +772,22 @@ def compute_trends(df: pd.DataFrame, group_fields: list[str]) -> pd.DataFrame:
 
     current_counts = (
         current_window.groupby(group_fields)
-        .size()
+        ["observation_weight"]
+        .sum()
         .rename("current_week_mentions")
         .reset_index()
     )
     previous_counts = (
         previous_window.groupby(group_fields)
-        .size()
+        ["observation_weight"]
+        .sum()
         .rename("previous_week_mentions")
         .reset_index()
     )
 
     merged = current_counts.merge(previous_counts, on=group_fields, how="outer").fillna(0)
-    merged["current_week_mentions"] = merged["current_week_mentions"].astype(int)
-    merged["previous_week_mentions"] = merged["previous_week_mentions"].astype(int)
+    merged["current_week_mentions"] = merged["current_week_mentions"].round(1)
+    merged["previous_week_mentions"] = merged["previous_week_mentions"].round(1)
     merged["trend_ratio"] = np.where(
         merged["previous_week_mentions"] > 0,
         (merged["current_week_mentions"] - merged["previous_week_mentions"])
@@ -458,8 +802,11 @@ def build_topic_summary(df: pd.DataFrame) -> pd.DataFrame:
     prompt_coverage = (
         df.groupby(["topic", "prompt"])
         .agg(
-            prompt_mentions=("url", "size"),
-            prompt_owned_hits=("source_type", lambda series: int((series == "owned").sum())),
+            prompt_mentions=("observation_weight", "sum"),
+            prompt_owned_hits=(
+                "observation_weight",
+                lambda series: float(series[df.loc[series.index, "source_type"] == "owned"].sum()),
+            ),
         )
         .reset_index()
     )
@@ -475,12 +822,21 @@ def build_topic_summary(df: pd.DataFrame) -> pd.DataFrame:
     summary = (
         df.groupby("topic")
         .agg(
-            citations=("url", "size"),
-            weighted_mentions=("influence_weight", "sum"),
+            citations=("observation_weight", "sum"),
+            weighted_mentions=("influence_weight", lambda series: float((series * df.loc[series.index, "observation_weight"]).sum())),
             models=("model", "nunique"),
-            owned_citations=("source_type", lambda series: int((series == "owned").sum())),
-            competitor_citations=("source_type", lambda series: int((series == "competitor").sum())),
-            external_citations=("source_type", lambda series: int((series == "external").sum())),
+            owned_citations=(
+                "observation_weight",
+                lambda series: float(series[df.loc[series.index, "source_type"] == "owned"].sum()),
+            ),
+            competitor_citations=(
+                "observation_weight",
+                lambda series: float(series[df.loc[series.index, "source_type"] == "competitor"].sum()),
+            ),
+            external_citations=(
+                "observation_weight",
+                lambda series: float(series[df.loc[series.index, "source_type"] == "external"].sum()),
+            ),
             last_seen=("date", "max"),
         )
         .reset_index()
@@ -511,8 +867,8 @@ def build_topic_summary(df: pd.DataFrame) -> pd.DataFrame:
         df[df["source_type"] == "owned"]
         .groupby("topic")
         .agg(
-            target_owned_url=("url", lambda series: series.value_counts().index[0]),
-            target_owned_domain=("source_domain", lambda series: series.value_counts().index[0]),
+            target_owned_url=("url", lambda series: top_weighted_value(df.loc[series.index], "url")),
+            target_owned_domain=("source_domain", lambda series: top_weighted_value(df.loc[series.index], "source_domain")),
         )
         .reset_index()
     )
@@ -520,8 +876,8 @@ def build_topic_summary(df: pd.DataFrame) -> pd.DataFrame:
         df[df["source_type"] == "competitor"]
         .groupby("topic")
         .agg(
-            lead_competitor=("competitor", lambda series: first_valid(series.value_counts().index.to_series())),
-            lead_competitor_url=("url", lambda series: series.value_counts().index[0]),
+            lead_competitor=("competitor", lambda series: top_weighted_value(df.loc[series.index], "competitor")),
+            lead_competitor_url=("url", lambda series: top_weighted_value(df.loc[series.index], "url")),
         )
         .reset_index()
     )
@@ -543,7 +899,7 @@ def build_owned_pages(df: pd.DataFrame) -> pd.DataFrame:
         .agg(
             influenced_topics=("topic", "nunique"),
             prompts_covered=("prompt", "nunique"),
-            citations=("url", "size"),
+            citations=("observation_weight", "sum"),
             models=("model", "nunique"),
             latest_mention=("date", "max"),
             topics=("topic", lambda series: ", ".join(sorted(series.unique())[:4])),
@@ -569,7 +925,7 @@ def build_competitor_pages(df: pd.DataFrame) -> pd.DataFrame:
         .agg(
             influenced_topics=("topic", "nunique"),
             prompts_covered=("prompt", "nunique"),
-            citations=("url", "size"),
+            citations=("observation_weight", "sum"),
             models=("model", "nunique"),
             latest_mention=("date", "max"),
             topics=("topic", lambda series: ", ".join(sorted(series.unique())[:4])),
@@ -592,7 +948,7 @@ def build_external_domains(df: pd.DataFrame) -> pd.DataFrame:
         external_rows.groupby("source_domain")
         .agg(
             influenced_topics=("topic", "nunique"),
-            citations=("source_domain", "size"),
+            citations=("observation_weight", "sum"),
             prompts_covered=("prompt", "nunique"),
             models=("model", "nunique"),
             latest_mention=("date", "max"),
@@ -723,7 +1079,7 @@ def build_dpr_actions(topic_summary: pd.DataFrame, df: pd.DataFrame) -> pd.DataF
     grouped = (
         external_rows.groupby(["topic", "source_domain"])
         .agg(
-            citations=("source_domain", "size"),
+            citations=("observation_weight", "sum"),
             prompts_covered=("prompt", "nunique"),
             models=("model", "nunique"),
             latest_mention=("date", "max"),
@@ -834,7 +1190,7 @@ def display_intro() -> None:
             <div class="action-kicker">PEEC Action Room</div>
             <h1 style="margin-bottom: 0.4rem;">Turn AI answer influence into weekly SEO and DPR actions</h1>
             <div class="small-note">
-                Upload PEEC exports, classify owned and external influence, and generate weekly action lists with rule-based scoring.
+                Pull PEEC data from the API or upload exports, classify owned and external influence, and generate weekly action lists with rule-based scoring.
             </div>
             <div class="chip-row">
                 <span class="chip chip-accent">Not a passive dashboard</span>
@@ -853,11 +1209,13 @@ def display_schema_help() -> None:
     st.markdown(
         """
         <div class="section-panel">
-            <h3>Expected PEEC schema</h3>
+            <h3>Supported inputs</h3>
             <p class="small-note">
-                Required columns: <code>topic</code>, <code>prompt</code>, <code>url</code>,
-                <code>source_domain</code>, <code>model</code>, <code>date</code>, <code>competitor</code>.
-                Optional columns: <code>tag</code>, <code>source_type</code>, <code>answer_rank</code>.
+                The app can pull from the PEEC Customer API or accept a flat file with
+                <code>topic</code>, <code>prompt</code>, <code>url</code>, <code>source_domain</code>,
+                <code>model</code>, <code>date</code>, and <code>competitor</code>.
+                Optional columns: <code>tag</code>, <code>source_type</code>, <code>answer_rank</code>,
+                and <code>usage_count</code>.
             </p>
         </div>
         """,
@@ -909,27 +1267,148 @@ def main() -> None:
     inject_styles()
     display_intro()
 
+    default_owned_domains = get_secret_or_env("PEEC_OWNED_DOMAINS", "mediaworks.co.uk")
+    default_api_key = get_secret_or_env("PEEC_API_KEY")
+    default_api_base_url = get_secret_or_env("PEEC_API_BASE_URL", PEEC_API_BASE_URL)
+    default_project_id = get_secret_or_env("PEEC_PROJECT_ID")
+    today = pd.Timestamp.utcnow().date()
+    default_fetch_start = (pd.Timestamp(today) - pd.Timedelta(days=DEFAULT_API_FETCH_DAYS - 1)).date()
+
+    source_df = None
+    source_name = ""
+    source_mode = "Upload file"
+
     with st.sidebar:
         st.header("Data setup")
-        upload = st.file_uploader(
-            "Upload PEEC data",
-            type=["csv", "xlsx", "xls"],
-            help="Use the sample file if you want to inspect the app structure first.",
+        source_mode = st.radio(
+            "Source",
+            ["PEEC API", "Upload file", "Sample data"],
+            index=0 if default_api_key else 1,
         )
-        use_sample = st.toggle("Load bundled sample data", value=upload is None)
         owned_domain_input = st.text_area(
             "Owned domains",
-            value="mediaworks.co.uk",
+            value=default_owned_domains,
             help="Comma-separated root domains used to classify owned pages.",
         )
         st.caption("Rows with a blank competitor are treated as external unless their domain matches the owned list.")
 
-    source_df = None
-    source_name = ""
-    if upload is not None:
-        source_df = load_uploaded_data(upload.name, upload.getvalue())
-        source_name = upload.name
-    elif use_sample:
+        owned_domains = [extract_domain(domain) for domain in owned_domain_input.split(",")]
+        owned_domains = [domain for domain in owned_domains if domain]
+
+        if source_mode == "PEEC API":
+            api_key_input = st.text_input(
+                "PEEC API key",
+                value=default_api_key,
+                type="password",
+                help="Use Streamlit secrets in production and only paste a key here for local testing.",
+            )
+            api_base_url = st.text_input("API base URL", value=default_api_base_url)
+            explicit_project_id = st.text_input(
+                "Project ID",
+                value=default_project_id,
+                help="Required for company-scoped API keys. Leave blank for project-scoped keys.",
+            ).strip()
+
+            selected_project_id = explicit_project_id or None
+            selected_project_label = explicit_project_id or "project-scoped key"
+            project_lookup: dict[str, str] = {}
+            project_notice = ""
+
+            if api_key_input and not explicit_project_id:
+                try:
+                    projects = fetch_peec_projects(api_key_input, api_base_url)
+                except Exception:
+                    project_notice = (
+                        "Could not list projects with this key. If the key is already scoped to one project, "
+                        "you can fetch without selecting a project."
+                    )
+                else:
+                    for project in projects:
+                        if not isinstance(project, dict):
+                            continue
+                        project_id = normalise_text(project.get("id"))
+                        project_name = normalise_text(project.get("name")) or project_id
+                        if project_id:
+                            project_lookup[f"{project_name} ({project_id})"] = project_id
+                    if project_lookup:
+                        selected_project_label = st.selectbox("Project", list(project_lookup.keys()))
+                        selected_project_id = project_lookup[selected_project_label]
+
+            fetch_dates = st.date_input(
+                "API fetch range",
+                value=(default_fetch_start, today),
+                max_value=today,
+                help="The app fetches only this window from PEEC, then applies local filters on top.",
+            )
+            if not isinstance(fetch_dates, tuple) or len(fetch_dates) != 2:
+                fetch_dates = (default_fetch_start, today)
+
+            max_rows = int(
+                st.number_input(
+                    "Max API rows",
+                    min_value=1000,
+                    max_value=100000,
+                    value=MAX_API_ROWS,
+                    step=1000,
+                    help="Protects the app from pulling an unbounded report.",
+                )
+            )
+            fetch_api = st.button("Fetch from PEEC API", use_container_width=True)
+
+            if project_notice:
+                st.caption(project_notice)
+
+            if fetch_api:
+                if not api_key_input:
+                    st.error("Enter a PEEC API key or add `PEEC_API_KEY` to Streamlit secrets.")
+                else:
+                    try:
+                        with st.spinner("Loading report data from PEEC API..."):
+                            metadata = fetch_peec_metadata(api_key_input, api_base_url, selected_project_id)
+                            api_rows = fetch_peec_report_rows(
+                                api_key=api_key_input,
+                                base_url=api_base_url,
+                                project_id=selected_project_id,
+                                start_date=fetch_dates[0].isoformat(),
+                                end_date=fetch_dates[1].isoformat(),
+                                page_size=DEFAULT_API_PAGE_SIZE,
+                                max_rows=max_rows,
+                            )
+                            api_df = build_dataframe_from_peec_api(api_rows, metadata, owned_domains)
+                        st.session_state["peec_api_df"] = api_df
+                        st.session_state["peec_api_source_name"] = f"PEEC API ({selected_project_label})"
+                        st.session_state["peec_api_window"] = (
+                            fetch_dates[0].isoformat(),
+                            fetch_dates[1].isoformat(),
+                        )
+                        st.session_state["peec_api_loaded_rows"] = len(api_df)
+                    except Exception as error:
+                        st.error(str(error))
+
+            if "peec_api_df" in st.session_state:
+                source_df = st.session_state["peec_api_df"]
+                source_name = st.session_state.get("peec_api_source_name", "PEEC API")
+                fetch_window = st.session_state.get("peec_api_window", ("", ""))
+                loaded_rows = st.session_state.get("peec_api_loaded_rows", 0)
+                st.caption(
+                    f"Loaded {loaded_rows:,} report rows from {fetch_window[0]} to {fetch_window[1]}."
+                )
+
+        elif source_mode == "Upload file":
+            upload = st.file_uploader(
+                "Upload PEEC data",
+                type=["csv", "xlsx", "xls"],
+                help="Use the sample file if you want to inspect the app structure first.",
+            )
+            if upload is not None:
+                source_df = load_uploaded_data(upload.name, upload.getvalue())
+                source_name = upload.name
+
+        else:
+            source_df = load_sample_data()
+            source_name = "sample_peec_data.csv"
+
+    if source_mode == "Sample data" and source_df is None:
         source_df = load_sample_data()
         source_name = "sample_peec_data.csv"
 
@@ -1012,9 +1491,16 @@ def main() -> None:
     earliest_date = filtered_df["date"].min().date()
     action_window = f"{earliest_date.isoformat()} to {latest_date.isoformat()}"
 
-    top_owned_share = filtered_df["source_type"].eq("owned").mean()
-    top_competitor_share = filtered_df["source_type"].eq("competitor").mean()
-    top_external_share = filtered_df["source_type"].eq("external").mean()
+    total_weight = max(filtered_df["observation_weight"].sum(), 1.0)
+    top_owned_share = (
+        filtered_df.loc[filtered_df["source_type"] == "owned", "observation_weight"].sum() / total_weight
+    )
+    top_competitor_share = (
+        filtered_df.loc[filtered_df["source_type"] == "competitor", "observation_weight"].sum() / total_weight
+    )
+    top_external_share = (
+        filtered_df.loc[filtered_df["source_type"] == "external", "observation_weight"].sum() / total_weight
+    )
 
     st.caption(
         f"Using `{source_name}`. Window: {action_window}. "
@@ -1026,7 +1512,7 @@ def main() -> None:
     metric_columns[1].metric("Owned influence share", f"{top_owned_share:.0%}")
     metric_columns[2].metric("Competitor share", f"{top_competitor_share:.0%}")
     metric_columns[3].metric("External share", f"{top_external_share:.0%}")
-    metric_columns[4].metric("Weekly actions", f"{len(all_actions)}")
+    metric_columns[4].metric("Observations", f"{int(round(total_weight)):,}")
 
     tabs = st.tabs(
         [
