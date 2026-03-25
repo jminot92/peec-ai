@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from peec_app.briefs.domain_types import render_domain_types_brief
+from peec_app.briefs.url_types import render_url_types_brief
 from peec_app.briefs.visibility import render_visibility_brief
 from peec_app.briefs.visibility_snapshot import render_visibility_snapshot_brief
 from peec_app.data import apply_dataset_filters, build_dataframe_from_peec_api, normalise_peec_data
@@ -207,12 +208,13 @@ def main() -> None:
         st.warning("The current model/topic/tag filters removed every row.")
         st.stop()
 
-    visibility_tab, snapshot_tab, domain_types_tab, brief_four_tab = st.tabs(
+    visibility_tab, snapshot_tab, domain_types_tab, url_types_tab, brief_five_tab = st.tabs(
         [
             "Visibility trend",
             "Visibility snapshot",
             "Domain types",
-            "Brief 04",
+            "URL types",
+            "Brief 05",
         ]
     )
 
@@ -225,7 +227,10 @@ def main() -> None:
     with domain_types_tab:
         render_domain_types_brief(filtered_df)
 
-    with brief_four_tab:
+    with url_types_tab:
+        render_url_types_brief(filtered_df)
+
+    with brief_five_tab:
         render_placeholder_brief(
             "Content action brief",
             "Use this slot for the next brief after we decide the exact questions it should answer.",
