@@ -55,8 +55,36 @@ INSTITUTIONAL_SUFFIXES = [".gov", ".gov.uk", ".edu", ".ac.uk", ".nhs.uk", ".org.
 @dataclass
 class DomainTypesBrief:
     summary_table: pd.DataFrame
+    display_table: pd.DataFrame
     table_png: bytes
     total_citations: float
+
+
+def format_count(value: object) -> str:
+    numeric = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    if pd.isna(numeric):
+        return ""
+    if float(numeric).is_integer():
+        return f"{int(numeric):,}"
+    return f"{float(numeric):,.1f}"
+
+
+def format_percentage(value: object) -> str:
+    numeric = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    if pd.isna(numeric):
+        return ""
+    return f"{float(numeric):,.1f}"
+
+
+def build_domain_types_display_table(summary_table: pd.DataFrame) -> pd.DataFrame:
+    display_table = summary_table.copy()
+    display_table["Weighted citations"] = display_table["Weighted citations"].map(format_count)
+    display_table["Domains"] = display_table["Domains"].map(format_count)
+    display_table["Share %"] = display_table["Share %"].map(format_percentage)
+    display_table["Top domains"] = display_table["Top domains"].map(
+        lambda value: "" if pd.isna(value) else str(value)
+    )
+    return display_table
 
 
 
@@ -93,7 +121,12 @@ def classify_domain_type(source_domain: str, source_type: str) -> str:
 
 def build_domain_types_brief(df: pd.DataFrame) -> DomainTypesBrief:
     if df.empty:
-        return DomainTypesBrief(summary_table=pd.DataFrame(), table_png=b"", total_citations=0.0)
+        return DomainTypesBrief(
+            summary_table=pd.DataFrame(),
+            display_table=pd.DataFrame(),
+            table_png=b"",
+            total_citations=0.0,
+        )
 
     working = df.copy()
     working["domain_type"] = working.apply(
@@ -109,7 +142,12 @@ def build_domain_types_brief(df: pd.DataFrame) -> DomainTypesBrief:
         .reset_index()
     )
     if type_summary.empty:
-        return DomainTypesBrief(summary_table=pd.DataFrame(), table_png=b"", total_citations=0.0)
+        return DomainTypesBrief(
+            summary_table=pd.DataFrame(),
+            display_table=pd.DataFrame(),
+            table_png=b"",
+            total_citations=0.0,
+        )
 
     top_domains = (
         working.groupby(["domain_type", "source_domain"], dropna=False)["observation_weight"]
@@ -147,15 +185,19 @@ def build_domain_types_brief(df: pd.DataFrame) -> DomainTypesBrief:
             "top_domains": "Top domains",
         }
     ).reset_index(drop=True)
+    display_table = build_domain_types_display_table(summary_table)
 
     table_png = render_table_png(
-        summary_table,
+        display_table,
         title="Domain types",
-        subtitle=f"Total citations: {total_citations:,.1f}",
+        subtitle=f"Total citations: {format_count(total_citations)}",
         max_cell_chars=34,
+        wrap_columns={"Top domains"},
+        transparent=True,
     )
     return DomainTypesBrief(
         summary_table=summary_table,
+        display_table=display_table,
         table_png=table_png,
         total_citations=total_citations,
     )
@@ -174,7 +216,7 @@ def render_domain_types_brief(df: pd.DataFrame) -> None:
         return
 
     metric_1, metric_2, metric_3 = st.columns(3)
-    metric_1.metric("Total weighted citations", f"{brief.total_citations:,.1f}")
+    metric_1.metric("Total weighted citations", format_count(brief.total_citations))
     metric_2.metric("Domain types", str(len(brief.summary_table)))
     metric_3.metric("Domains", f"{df['source_domain'].nunique():,}")
 
@@ -201,4 +243,4 @@ def render_domain_types_brief(df: pd.DataFrame) -> None:
         )
 
     with st.expander("View raw table data"):
-        st.dataframe(brief.summary_table, use_container_width=True, hide_index=True)
+        st.dataframe(brief.display_table, use_container_width=True, hide_index=True)
