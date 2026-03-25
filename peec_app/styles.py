@@ -144,6 +144,7 @@ def render_intro() -> None:
             <div class="chip-row">
                 <span class="chip chip-accent">Brief 01: Visibility trend</span>
                 <span class="chip chip-accent">Brief 02: Visibility snapshot</span>
+                <span class="chip chip-accent">Brief 03: Domain types</span>
                 <span class="chip">PEEC API only</span>
                 <span class="chip">Exportable table</span>
                 <span class="chip">PNG chart output</span>

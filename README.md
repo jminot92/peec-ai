@@ -12,6 +12,10 @@ Streamlit app for building client briefs from the PEEC API.
   - date-specific bar chart
   - exportable snapshot table
   - downloadable PNG bar chart with transparent background
+- `Domain types`
+  - rule-based domain-type summary
+  - exportable summary table
+  - downloadable PNG table in the branded grid style
 
 ## Structure
 
@@ -20,7 +24,9 @@ Streamlit app for building client briefs from the PEEC API.
 - `peec_app/data.py`: PEEC row shaping, ownership classification and dataset filters
 - `peec_app/briefs/visibility.py`: Brief 01 logic and rendering
 - `peec_app/briefs/visibility_snapshot.py`: Brief 02 logic and rendering
+- `peec_app/briefs/domain_types.py`: Brief 03 logic and rendering
 - `peec_app/briefs/visibility_common.py`: shared competitor and palette helpers
+- `peec_app/renderers/png_table.py`: PNG table export helper
 - `peec_app/styles.py`: shared Streamlit styling
 - `peec_app/utils.py`: shared text/domain helpers
 
