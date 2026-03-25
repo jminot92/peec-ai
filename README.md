@@ -1,60 +1,35 @@
-# PEEC Action Room
+# PEEC Brief Builder
 
-Streamlit app for exploring PEEC AI answer data while the next insight layer is being rebuilt.
+Streamlit app for building client briefs from the PEEC API.
 
-## What the app does
+## Current brief
 
-- pulls source URL data directly from the PEEC Customer API
-- lets you choose one or more PEEC projects directly in the interface
-- classifies rows into owned, competitor, and external influence
-- weights API rows using `usage_count` so aggregated report rows behave like observations
-- shows a baseline PEEC workspace with filters, source mix, top domains, and raw filtered rows
-- includes `Suggestion 1`, a PEEC-only beta for new page opportunities
-- exports the currently filtered PEEC dataset as CSV
+- `Visibility vs competitors`
+  - exportable summary table
+  - exportable daily chart dataset
+  - downloadable PNG line chart with transparent background for slides and decks
 
-## PEEC API
+## Structure
 
-The app can fetch directly from the PEEC Customer API using:
+- `app.py`: Streamlit entry point and orchestration
+- `peec_app/peec_api.py`: PEEC API client and cached fetch helpers
+- `peec_app/data.py`: PEEC row shaping, ownership classification and dataset filters
+- `peec_app/briefs/visibility.py`: Brief 01 logic and rendering
+- `peec_app/styles.py`: shared Streamlit styling
+- `peec_app/utils.py`: shared text/domain helpers
 
-- `GET /prompts`
-- `GET /topics`
-- `GET /tags`
-- `GET /models`
-- `GET /brands`
-- `POST /reports/urls`
-
-You can use either:
-
-- a project-scoped API key
-- a company API key plus `project_id`
-
-If the key can list projects, the app shows a project multiselect in the sidebar so you can choose live and pitch projects without editing secrets.
-
-The app supports these fetch windows in the UI:
-
-- `7` days
-- `14` days
-- `30` days
-- `60` days
-- `90` days
-- custom date range
-
-Start narrow and use the custom range only when you need a broader audit.
-
-## Streamlit secrets
-
-For Streamlit Community Cloud, add these secrets:
+## Required secrets
 
 ```toml
 PEEC_API_KEY = "your-api-key"
-PEEC_PROJECT_ID = "optional-project-id"
-PEEC_API_BASE_URL = "https://api.peec.ai/customer/v1"
-PEEC_OWNED_DOMAINS = "mediaworks.co.uk"
 ```
 
-`PEEC_OWNED_DOMAINS` is optional and is now configured through secrets only, not through the sidebar.
+Optional overrides:
 
-An example file is included at `.streamlit/secrets.toml.example`.
+```toml
+PEEC_API_BASE_URL = "https://api.peec.ai/customer/v1"
+PEEC_OWNED_DOMAINS = "example.com"
+```
 
 ## Run locally
 
@@ -64,9 +39,8 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-## Current state
+## Notes
 
-- The previous weekly action and tabbed insight layer has been removed.
-- The app is currently a baseline PEEC data workspace so new insight modules can be added one by one.
-- `Suggestion 1` is the first rebuilt module and focuses on new page opportunities for content teams.
-- API rows are weighted by `usage_count` when available.
+- The app is PEEC API only.
+- The app only fetches when you click `Fetch latest PEEC data`.
+- Ownership is inferred from PEEC brand metadata and can be overridden with `PEEC_OWNED_DOMAINS` if needed.
