@@ -142,7 +142,8 @@ def render_intro() -> None:
                 The app stays connected to PEEC, but each insight now lives in its own Python file so briefs can be built and edited independently.
             </p>
             <div class="chip-row">
-                <span class="chip chip-accent">Brief 01: Visibility vs competitors</span>
+                <span class="chip chip-accent">Brief 01: Visibility trend</span>
+                <span class="chip chip-accent">Brief 02: Visibility snapshot</span>
                 <span class="chip">PEEC API only</span>
                 <span class="chip">Exportable table</span>
                 <span class="chip">PNG chart output</span>

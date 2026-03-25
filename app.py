@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from peec_app.briefs.visibility import render_visibility_brief
+from peec_app.briefs.visibility_snapshot import render_visibility_snapshot_brief
 from peec_app.data import apply_dataset_filters, build_dataframe_from_peec_api, normalise_peec_data
 from peec_app.peec_api import (
     DEFAULT_API_PAGE_SIZE,
@@ -205,10 +206,10 @@ def main() -> None:
         st.warning("The current model/topic/tag filters removed every row.")
         st.stop()
 
-    visibility_tab, brief_two_tab, brief_three_tab = st.tabs(
+    visibility_tab, snapshot_tab, brief_three_tab = st.tabs(
         [
-            "Visibility vs competitors",
-            "Brief 02",
+            "Visibility trend",
+            "Visibility snapshot",
             "Brief 03",
         ]
     )
@@ -216,11 +217,8 @@ def main() -> None:
     with visibility_tab:
         render_visibility_brief(filtered_df, loaded_project.get("name", "Owned brand"))
 
-    with brief_two_tab:
-        render_placeholder_brief(
-            "Content gap brief",
-            "Use this slot for the next content brief once the visibility baseline is signed off.",
-        )
+    with snapshot_tab:
+        render_visibility_snapshot_brief(filtered_df, loaded_project.get("name", "Owned brand"))
 
     with brief_three_tab:
         render_placeholder_brief(

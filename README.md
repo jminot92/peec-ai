@@ -4,10 +4,14 @@ Streamlit app for building client briefs from the PEEC API.
 
 ## Current brief
 
-- `Visibility vs competitors`
+- `Visibility trend`
   - exportable summary table
   - exportable daily chart dataset
   - downloadable PNG line chart with transparent background for slides and decks
+- `Visibility snapshot`
+  - date-specific bar chart
+  - exportable snapshot table
+  - downloadable PNG bar chart with transparent background
 
 ## Structure
 
@@ -15,6 +19,8 @@ Streamlit app for building client briefs from the PEEC API.
 - `peec_app/peec_api.py`: PEEC API client and cached fetch helpers
 - `peec_app/data.py`: PEEC row shaping, ownership classification and dataset filters
 - `peec_app/briefs/visibility.py`: Brief 01 logic and rendering
+- `peec_app/briefs/visibility_snapshot.py`: Brief 02 logic and rendering
+- `peec_app/briefs/visibility_common.py`: shared competitor and palette helpers
 - `peec_app/styles.py`: shared Streamlit styling
 - `peec_app/utils.py`: shared text/domain helpers
 
