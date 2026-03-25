@@ -76,13 +76,27 @@ def format_percentage(value: object) -> str:
     return f"{float(numeric):,.1f}"
 
 
+def summarise_top_domains(value: object, max_domains: int = 2) -> str:
+    if pd.isna(value):
+        return ""
+    domains = [item.strip() for item in str(value).split(",") if item.strip()]
+    if not domains:
+        return ""
+    if len(domains) <= max_domains:
+        return ", ".join(domains)
+    shown = ", ".join(domains[:max_domains])
+    remaining = len(domains) - max_domains
+    suffix = "domain" if remaining == 1 else "domains"
+    return f"{shown} +{remaining} {suffix}"
+
+
 def build_domain_types_display_table(summary_table: pd.DataFrame) -> pd.DataFrame:
     display_table = summary_table.copy()
     display_table["Weighted citations"] = display_table["Weighted citations"].map(format_count)
     display_table["Domains"] = display_table["Domains"].map(format_count)
     display_table["Share %"] = display_table["Share %"].map(format_percentage)
     display_table["Top domains"] = display_table["Top domains"].map(
-        lambda value: "" if pd.isna(value) else str(value)
+        summarise_top_domains
     )
     return display_table
 
@@ -163,18 +177,10 @@ def build_domain_types_brief(df: pd.DataFrame) -> DomainTypesBrief:
     type_summary["share_pct"] = ((type_summary["weighted_citations"] / total_citations) * 100).round(1) if total_citations else 0.0
     type_summary["top_domains"] = type_summary["domain_type"].map(top_domain_labels).fillna("")
 
-    sort_order = {
-        "Corporate": 0,
-        "Reference": 1,
-        "Institutional": 2,
-        "UGC": 3,
-        "You": 4,
-        "Editorial": 5,
-        "Competitor": 6,
-        "Other": 7,
-    }
-    type_summary["sort_order"] = type_summary["domain_type"].map(sort_order).fillna(99)
-    summary_table = type_summary.sort_values(["sort_order", "weighted_citations"], ascending=[True, False]).drop(columns=["sort_order"])
+    summary_table = type_summary.sort_values(
+        ["share_pct", "weighted_citations", "domain_type"],
+        ascending=[False, False, True],
+    )
     summary_table["weighted_citations"] = summary_table["weighted_citations"].round(1)
     summary_table = summary_table.rename(
         columns={
@@ -191,8 +197,7 @@ def build_domain_types_brief(df: pd.DataFrame) -> DomainTypesBrief:
         display_table,
         title="Domain types",
         subtitle=f"Total citations: {format_count(total_citations)}",
-        max_cell_chars=34,
-        wrap_columns={"Top domains"},
+        max_cell_chars=38,
         transparent=True,
     )
     return DomainTypesBrief(
