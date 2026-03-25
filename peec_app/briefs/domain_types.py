@@ -179,6 +179,7 @@ def render_domain_types_brief(df: pd.DataFrame) -> None:
     metric_3.metric("Domains", f"{df['source_domain'].nunique():,}")
 
     if brief.table_png:
+        st.markdown("**PNG Table Preview**")
         st.image(brief.table_png, use_container_width=True)
 
     download_1, download_2 = st.columns(2)
@@ -192,11 +193,12 @@ def render_domain_types_brief(df: pd.DataFrame) -> None:
         )
     with download_2:
         st.download_button(
-            "Download PNG table",
+            "Download PNG table image",
             brief.table_png,
             file_name="domain_types_summary.png",
             mime="image/png",
             use_container_width=True,
         )
 
-    st.dataframe(brief.summary_table, use_container_width=True, hide_index=True)
+    with st.expander("View raw table data"):
+        st.dataframe(brief.summary_table, use_container_width=True, hide_index=True)
