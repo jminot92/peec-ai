@@ -24,6 +24,7 @@ Streamlit app for building client briefs from the PEEC API.
   - markdown package built from the current app outputs
   - ready to paste into Claude
   - includes prompt instructions plus the current summary tables
+  - bundle download includes `.md` and `.xlsx` files
 
 ## Structure
 
