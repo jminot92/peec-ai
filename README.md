@@ -20,6 +20,10 @@ Streamlit app for building client briefs from the PEEC API.
   - rule-based URL-type summary
   - exportable summary table
   - downloadable PNG table in the branded grid style
+- `Slide brief package`
+  - markdown package built from the current app outputs
+  - ready to paste into Claude
+  - includes prompt instructions plus the current summary tables
 
 ## Structure
 
@@ -30,6 +34,7 @@ Streamlit app for building client briefs from the PEEC API.
 - `peec_app/briefs/visibility_snapshot.py`: Brief 02 logic and rendering
 - `peec_app/briefs/domain_types.py`: Brief 03 logic and rendering
 - `peec_app/briefs/url_types.py`: Brief 04 logic and rendering
+- `peec_app/briefs/slide_brief/`: Brief 05 prompt package builder
 - `peec_app/briefs/visibility_common.py`: shared competitor and palette helpers
 - `peec_app/renderers/png_table.py`: PNG table export helper
 - `peec_app/styles.py`: shared Streamlit styling

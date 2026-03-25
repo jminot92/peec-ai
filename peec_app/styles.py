@@ -146,6 +146,7 @@ def render_intro() -> None:
                 <span class="chip chip-accent">Brief 02: Visibility snapshot</span>
                 <span class="chip chip-accent">Brief 03: Domain types</span>
                 <span class="chip chip-accent">Brief 04: URL types</span>
+                <span class="chip chip-accent">Brief 05: Slide package</span>
                 <span class="chip">PEEC API only</span>
                 <span class="chip">Exportable table</span>
                 <span class="chip">PNG chart output</span>

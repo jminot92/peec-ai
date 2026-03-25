@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from peec_app.briefs.domain_types import render_domain_types_brief
+from peec_app.briefs.slide_brief.builder import render_slide_brief_package
 from peec_app.briefs.url_types import render_url_types_brief
 from peec_app.briefs.visibility import render_visibility_brief
 from peec_app.briefs.visibility_snapshot import render_visibility_snapshot_brief
@@ -16,7 +17,7 @@ from peec_app.peec_api import (
     fetch_peec_projects,
     fetch_peec_report_rows,
 )
-from peec_app.styles import inject_styles, render_intro, render_placeholder_brief
+from peec_app.styles import inject_styles, render_intro
 from peec_app.utils import build_project_label, extract_domain, get_secret_or_env, normalise_text
 
 
@@ -208,13 +209,13 @@ def main() -> None:
         st.warning("The current model/topic/tag filters removed every row.")
         st.stop()
 
-    visibility_tab, snapshot_tab, domain_types_tab, url_types_tab, brief_five_tab = st.tabs(
+    visibility_tab, snapshot_tab, domain_types_tab, url_types_tab, slide_package_tab = st.tabs(
         [
             "Visibility trend",
             "Visibility snapshot",
             "Domain types",
             "URL types",
-            "Brief 05",
+            "Slide brief package",
         ]
     )
 
@@ -230,10 +231,14 @@ def main() -> None:
     with url_types_tab:
         render_url_types_brief(filtered_df)
 
-    with brief_five_tab:
-        render_placeholder_brief(
-            "Content action brief",
-            "Use this slot for the next brief after we decide the exact questions it should answer.",
+    with slide_package_tab:
+        render_slide_brief_package(
+            filtered_df,
+            project_name=loaded_project.get("name", "Owned brand"),
+            window=loaded_window,
+            selected_models=selected_models,
+            selected_topics=selected_topics,
+            selected_tags=selected_tags,
         )
 
 
