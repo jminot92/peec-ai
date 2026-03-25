@@ -28,8 +28,9 @@ class SlideBriefPackage:
 
 
 
-def load_prompt_markdown() -> str:
-    return PROMPT_PATH.read_text(encoding="utf-8").strip()
+def load_prompt_markdown(project_name: str) -> str:
+    prompt = PROMPT_PATH.read_text(encoding="utf-8").strip()
+    return prompt.replace("{{CLIENT_NAME}}", project_name)
 
 
 
@@ -66,6 +67,51 @@ def build_bundle_zip(
     return buffer.getvalue()
 
 
+def build_prompt_coverage_table(df: pd.DataFrame, project_name: str) -> pd.DataFrame:
+    if df.empty or "prompt" not in df.columns:
+        return pd.DataFrame(
+            columns=[
+                "Prompt",
+                f"{project_name} Present (Yes/No)",
+                "Top Competitor Present",
+                "Top Competitor Name",
+            ]
+        )
+
+    prompt_rows = df.copy()
+    prompt_totals = (
+        prompt_rows.groupby("prompt", dropna=False)["observation_weight"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+    prompt_order = prompt_totals.head(50).index.tolist()
+    coverage_rows: list[dict[str, str]] = []
+
+    for prompt in prompt_order:
+        prompt_df = prompt_rows[prompt_rows["prompt"] == prompt].copy()
+        owned_present = bool((prompt_df["source_type"] == "owned").any())
+        competitor_df = prompt_df[prompt_df["source_type"] == "competitor"].copy()
+        top_competitor_name = ""
+        if not competitor_df.empty:
+            competitor_totals = (
+                competitor_df.groupby("competitor", dropna=False)["observation_weight"]
+                .sum()
+                .sort_values(ascending=False)
+            )
+            valid_competitors = [value for value in competitor_totals.index.tolist() if str(value).strip()]
+            top_competitor_name = str(valid_competitors[0]) if valid_competitors else ""
+        coverage_rows.append(
+            {
+                "Prompt": str(prompt),
+                f"{project_name} Present (Yes/No)": "Yes" if owned_present else "No",
+                "Top Competitor Present": "Yes" if top_competitor_name else "No",
+                "Top Competitor Name": top_competitor_name,
+            }
+        )
+
+    return pd.DataFrame(coverage_rows)
+
+
 
 def build_slide_brief_package(
     df: pd.DataFrame,
@@ -89,8 +135,9 @@ def build_slide_brief_package(
     )
     domain_brief = build_domain_types_brief(df)
     url_brief = build_url_types_brief(df)
+    prompt_coverage_table = build_prompt_coverage_table(df, project_name)
 
-    prompt_markdown = load_prompt_markdown()
+    prompt_markdown = load_prompt_markdown(project_name)
     context = f"""# Claude Slide Brief Package
 
 ## Instructions For Claude
@@ -131,6 +178,14 @@ def build_slide_brief_package(
 ```csv
 {dataframe_to_csv_block(url_brief.summary_table)}
 ```
+
+## Prompt Coverage Table
+Include a table showing each of the 50 prompts with columns: Prompt, {project_name} Present (Yes/No), Top Competitor Present, Top Competitor Name.
+This table should be derived from the filtered PEEC rows file during the packaging step.
+If this table is not present, Claude should flag that prompt-level specificity is limited and recommend adding it.
+```csv
+{dataframe_to_csv_block(prompt_coverage_table, max_rows=50)}
+```
 """
 
     safe_project = "-".join(project_name.lower().split()) or "project"
@@ -156,6 +211,10 @@ def build_slide_brief_package(
         f"{safe_project}-url-types-summary.xlsx": dataframe_to_excel_bytes(
             url_brief.summary_table,
             "URL types",
+        ),
+        f"{safe_project}-prompt-coverage-table.xlsx": dataframe_to_excel_bytes(
+            prompt_coverage_table,
+            "Prompt coverage",
         ),
     }
     bundle_file_name = f"{safe_project}-claude-package.zip"
