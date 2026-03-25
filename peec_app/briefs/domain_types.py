@@ -191,6 +191,15 @@ def build_domain_types_brief(df: pd.DataFrame) -> DomainTypesBrief:
             "top_domains": "Top domains",
         }
     ).reset_index(drop=True)
+    summary_table = summary_table[
+        [
+            "Domain type",
+            "Share %",
+            "Weighted citations",
+            "Domains",
+            "Top domains",
+        ]
+    ].copy()
     display_table = build_domain_types_display_table(summary_table)
 
     table_png = render_table_png(
