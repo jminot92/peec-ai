@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from peec_app.briefs.domain_types import build_domain_types_brief
+from peec_app.briefs.prompt_visibility import build_prompt_coverage_table
 from peec_app.briefs.url_types import build_url_types_brief
 from peec_app.briefs.visibility import build_visibility_brief
 from peec_app.briefs.visibility_common import competitor_options, default_competitor_selection
@@ -65,51 +66,6 @@ def build_bundle_zip(
         for file_name, file_bytes in excel_files.items():
             archive.writestr(file_name, file_bytes)
     return buffer.getvalue()
-
-
-def build_prompt_coverage_table(df: pd.DataFrame, project_name: str) -> pd.DataFrame:
-    if df.empty or "prompt" not in df.columns:
-        return pd.DataFrame(
-            columns=[
-                "Prompt",
-                f"{project_name} Present (Yes/No)",
-                "Top Competitor Present",
-                "Top Competitor Name",
-            ]
-        )
-
-    prompt_rows = df.copy()
-    prompt_totals = (
-        prompt_rows.groupby("prompt", dropna=False)["observation_weight"]
-        .sum()
-        .sort_values(ascending=False)
-    )
-    prompt_order = prompt_totals.head(50).index.tolist()
-    coverage_rows: list[dict[str, str]] = []
-
-    for prompt in prompt_order:
-        prompt_df = prompt_rows[prompt_rows["prompt"] == prompt].copy()
-        owned_present = bool((prompt_df["source_type"] == "owned").any())
-        competitor_df = prompt_df[prompt_df["source_type"] == "competitor"].copy()
-        top_competitor_name = ""
-        if not competitor_df.empty:
-            competitor_totals = (
-                competitor_df.groupby("competitor", dropna=False)["observation_weight"]
-                .sum()
-                .sort_values(ascending=False)
-            )
-            valid_competitors = [value for value in competitor_totals.index.tolist() if str(value).strip()]
-            top_competitor_name = str(valid_competitors[0]) if valid_competitors else ""
-        coverage_rows.append(
-            {
-                "Prompt": str(prompt),
-                f"{project_name} Present (Yes/No)": "Yes" if owned_present else "No",
-                "Top Competitor Present": "Yes" if top_competitor_name else "No",
-                "Top Competitor Name": top_competitor_name,
-            }
-        )
-
-    return pd.DataFrame(coverage_rows)
 
 
 
