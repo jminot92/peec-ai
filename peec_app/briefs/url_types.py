@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 import pandas as pd
 import streamlit as st
 
+from peec_app.renderers.copy_table import render_copy_table_button
 from peec_app.renderers.png_table import render_table_png
 
 
@@ -311,7 +312,7 @@ def render_url_types_brief(df: pd.DataFrame) -> None:
         st.markdown("**PNG Table Preview**")
         st.image(brief.table_png, use_container_width=True)
 
-    download_1, download_2 = st.columns(2)
+    download_1, download_2, download_3 = st.columns(3)
     with download_1:
         st.download_button(
             "Export URL types CSV",
@@ -327,6 +328,12 @@ def render_url_types_brief(df: pd.DataFrame) -> None:
             file_name="url_types_summary.png",
             mime="image/png",
             use_container_width=True,
+        )
+    with download_3:
+        render_copy_table_button(
+            brief.display_table,
+            button_label="Copy table for PowerPoint",
+            key="url-types-table",
         )
 
     with st.expander("View raw table data"):

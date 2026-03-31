@@ -11,11 +11,25 @@ class PromptVisibilityBrief:
     summary_table: pd.DataFrame
 
 
-
 def _first_non_empty(series: pd.Series) -> str:
     values = [str(value).strip() for value in series.fillna("").astype(str) if str(value).strip()]
     return values[0] if values else ""
 
+
+def _collect_tags(prompt_df: pd.DataFrame) -> str:
+    tag_values: list[str] = []
+    if "tag_list" in prompt_df.columns:
+        for values in prompt_df["tag_list"]:
+            if isinstance(values, list):
+                tag_values.extend(str(value).strip() for value in values if str(value).strip())
+    if not tag_values and "tag" in prompt_df.columns:
+        tag_values.extend(
+            str(value).strip()
+            for value in prompt_df["tag"].fillna("").astype(str).tolist()
+            if str(value).strip()
+        )
+    unique_tags = sorted({value for value in tag_values if value})
+    return ", ".join(unique_tags)
 
 
 def build_prompt_visibility_table(df: pd.DataFrame, project_name: str) -> pd.DataFrame:
@@ -24,6 +38,7 @@ def build_prompt_visibility_table(df: pd.DataFrame, project_name: str) -> pd.Dat
             columns=[
                 "Prompt",
                 "Topic",
+                "Tags",
                 "Weighted citations",
                 f"{project_name} share %",
                 "Competitor share %",
@@ -71,6 +86,7 @@ def build_prompt_visibility_table(df: pd.DataFrame, project_name: str) -> pd.Dat
             {
                 "Prompt": str(prompt),
                 "Topic": _first_non_empty(prompt_df["topic"]),
+                "Tags": _collect_tags(prompt_df),
                 "Weighted citations": round(total_weight, 1),
                 f"{project_name} share %": round((owned_weight / total_weight * 100) if total_weight else 0.0, 1),
                 "Competitor share %": round((competitor_weight / total_weight * 100) if total_weight else 0.0, 1),
@@ -92,7 +108,6 @@ def build_prompt_visibility_table(df: pd.DataFrame, project_name: str) -> pd.Dat
     ).reset_index(drop=True)
 
 
-
 def build_prompt_coverage_table(df: pd.DataFrame, project_name: str) -> pd.DataFrame:
     prompt_visibility_table = build_prompt_visibility_table(df, project_name)
     if prompt_visibility_table.empty:
@@ -112,7 +127,6 @@ def build_prompt_coverage_table(df: pd.DataFrame, project_name: str) -> pd.DataF
             "Top Competitor Name",
         ]
     ].head(50).copy()
-
 
 
 def render_prompt_visibility_brief(df: pd.DataFrame, project_name: str) -> None:
