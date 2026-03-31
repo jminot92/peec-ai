@@ -6,7 +6,6 @@ import pandas as pd
 import streamlit as st
 
 from peec_app.briefs.domain_types import render_domain_types_brief
-from peec_app.briefs.platform_visibility import render_platform_visibility_brief
 from peec_app.briefs.prompt_visibility import render_prompt_visibility_brief
 from peec_app.briefs.slide_brief.builder import render_slide_brief_package
 from peec_app.briefs.url_types import render_url_types_brief
@@ -241,11 +240,10 @@ def main() -> None:
         st.warning("The current model/topic/tag filters removed every row.")
         st.stop()
 
-    visibility_tab, snapshot_tab, platform_visibility_tab, domain_types_tab, url_types_tab, prompt_visibility_tab, slide_package_tab = st.tabs(
+    visibility_tab, snapshot_tab, domain_types_tab, url_types_tab, prompt_visibility_tab, slide_package_tab = st.tabs(
         [
             "Visibility trend",
             "Visibility snapshot",
-            "Platform visibility",
             "Domain types",
             "URL types",
             "Prompt visibility",
@@ -258,9 +256,6 @@ def main() -> None:
 
     with snapshot_tab:
         render_visibility_snapshot_brief(filtered_df, loaded_project.get("name", "Owned brand"))
-
-    with platform_visibility_tab:
-        render_platform_visibility_brief(filtered_df, loaded_project.get("name", "Owned brand"))
 
     with domain_types_tab:
         render_domain_types_brief(filtered_df)

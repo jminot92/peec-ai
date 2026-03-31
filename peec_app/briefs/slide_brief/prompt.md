@@ -10,8 +10,6 @@ Keep the tone direct, commercial, and clear.
 Do not write speaker notes.
 Do not describe charts.
 Do not create slide layouts.
-If the platform visibility summary shows a clear model-level gap, mention it briefly in Slide 1 or Slide 5.
-Do not create a separate platform section.
 
 ## Slide 1: AI Visibility
 Write one line only.
