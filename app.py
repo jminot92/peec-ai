@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from zoneinfo import ZoneInfo
+
 import pandas as pd
 import streamlit as st
 
@@ -31,6 +33,7 @@ LOOKBACK_OPTIONS = [
     "Last 365 days",
     "Custom range",
 ]
+APP_TIMEZONE = ZoneInfo("Europe/London")
 
 
 
@@ -59,7 +62,7 @@ def main() -> None:
         for domain in get_secret_or_env("PEEC_OWNED_DOMAINS").replace("\n", ",").split(",")
         if extract_domain(domain)
     ]
-    today = pd.Timestamp.utcnow().normalize()
+    today = pd.Timestamp.now(tz=APP_TIMEZONE).normalize().tz_localize(None)
 
     if not api_key:
         st.error("Add `PEEC_API_KEY` to Streamlit secrets before using the app.")
@@ -118,11 +121,16 @@ def main() -> None:
             fetch_start, fetch_end = default_start, default_end
 
         fetch_clicked = st.button("Fetch latest PEEC data", use_container_width=True)
-        st.caption("The fetch is capped and only runs on demand. PEEC documents 200 requests per minute per project.")
+        st.caption(
+            f"The fetch is capped and only runs on demand. Current fetch window: {fetch_start.date().isoformat()} to {fetch_end.date().isoformat()} (Europe/London)."
+        )
+        st.caption("Manual fetches bypass the short PEEC response cache so you get the latest available rows.")
 
         if fetch_clicked:
             try:
                 with st.spinner("Loading PEEC metadata and URLs report..."):
+                    fetch_peec_metadata.clear()
+                    fetch_peec_report_rows.clear()
                     metadata = fetch_peec_metadata(api_key, api_base_url, selected_project["id"])
                     api_rows = fetch_peec_report_rows(
                         api_key=api_key,
@@ -162,7 +170,12 @@ def main() -> None:
     loaded_window = st.session_state.get("loaded_window", ("", ""))
 
     if peec_df.empty:
-        st.warning("The selected PEEC range returned no usable rows.")
+        if dataset_meta.get("dropped_rows", 0):
+            st.warning(
+                f"The selected PEEC range returned {dataset_meta.get('dropped_rows', 0):,} PEEC rows, but none were usable after normalisation. This usually means the rows are incomplete for the current date window."
+            )
+        else:
+            st.warning("The selected PEEC range returned no usable rows.")
         st.stop()
 
     with st.sidebar:
