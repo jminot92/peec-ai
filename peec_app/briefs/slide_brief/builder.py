@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 from peec_app.briefs.domain_types import build_domain_types_brief
+from peec_app.briefs.platform_visibility import build_platform_visibility_brief
 from peec_app.briefs.prompt_visibility import build_prompt_coverage_table
 from peec_app.briefs.url_types import build_url_types_brief
 from peec_app.briefs.visibility import build_visibility_brief
@@ -90,6 +91,7 @@ def build_slide_brief_package(
         else None
     )
     domain_brief = build_domain_types_brief(df)
+    platform_brief = build_platform_visibility_brief(df, project_name)
     url_brief = build_url_types_brief(df)
     prompt_coverage_table = build_prompt_coverage_table(df, project_name)
 
@@ -130,6 +132,11 @@ def build_slide_brief_package(
 {dataframe_to_csv_block(domain_brief.summary_table)}
 ```
 
+## Platform Visibility Summary
+```csv
+{dataframe_to_csv_block(platform_brief.summary_table)}
+```
+
 ## URL Types Summary
 ```csv
 {dataframe_to_csv_block(url_brief.summary_table)}
@@ -163,6 +170,10 @@ If this table is not present, Claude should flag that prompt-level specificity i
         f"{safe_project}-domain-types-summary.xlsx": dataframe_to_excel_bytes(
             domain_brief.summary_table,
             "Domain types",
+        ),
+        f"{safe_project}-platform-visibility-summary.xlsx": dataframe_to_excel_bytes(
+            platform_brief.summary_table,
+            "Platform visibility",
         ),
         f"{safe_project}-url-types-summary.xlsx": dataframe_to_excel_bytes(
             url_brief.summary_table,
