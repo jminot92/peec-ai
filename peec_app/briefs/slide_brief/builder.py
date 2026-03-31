@@ -24,6 +24,7 @@ PROMPT_PATH = Path(__file__).with_name("prompt.md")
 DEFAULT_PROMPT_TARGET = "250"
 DEFAULT_TRACKING_COST = "GBP 75/month"
 DEFAULT_HOURLY_RATE = "GBP 112.50/hour"
+DEFAULT_AUDIENCE_TERM = "buyers"
 
 
 @dataclass
@@ -177,6 +178,7 @@ If this table is not present, Claude should flag that prompt-level specificity i
             "{client}": project_name,
             "{competitor_1}": competitor_1,
             "{competitor_2}": competitor_2,
+            "{audience_term}": DEFAULT_AUDIENCE_TERM,
             "{window}": f"{window[0]} to {window[1]}",
             "{prompt_count}": f"{df['prompt'].nunique():,}",
             "{prompt_target}": DEFAULT_PROMPT_TARGET,
