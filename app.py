@@ -170,10 +170,18 @@ def main() -> None:
     loaded_window = st.session_state.get("loaded_window", ("", ""))
 
     if peec_df.empty:
+        blank_field_counts = dataset_meta.get("blank_field_counts", {})
+        blank_summary = ", ".join(
+            f"{field}: {count:,}"
+            for field, count in blank_field_counts.items()
+            if count
+        )
         if dataset_meta.get("dropped_rows", 0):
             st.warning(
                 f"The selected PEEC range returned {dataset_meta.get('dropped_rows', 0):,} PEEC rows, but none were usable after normalisation. This usually means the rows are incomplete for the current date window."
             )
+            if blank_summary:
+                st.caption(f"Rows were missing these fields before fallback and filtering: {blank_summary}.")
         else:
             st.warning("The selected PEEC range returned no usable rows.")
         st.stop()
@@ -218,6 +226,15 @@ def main() -> None:
     st.caption(
         f"Loaded {dataset_meta.get('row_count', 0):,} usable PEEC rows. Dropped during normalisation: {dataset_meta.get('dropped_rows', 0):,}."
     )
+    blank_field_counts = dataset_meta.get("blank_field_counts", {})
+    if any(blank_field_counts.values()):
+        blank_summary = ", ".join(
+            f"{field}: {count:,}"
+            for field, count in blank_field_counts.items()
+            if count
+        )
+        if blank_summary:
+            st.caption(f"Raw PEEC rows had missing fields before fallback handling: {blank_summary}.")
 
     if filtered_df.empty:
         st.warning("The current model/topic/tag filters removed every row.")

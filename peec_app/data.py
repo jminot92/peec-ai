@@ -116,6 +116,11 @@ def build_dataframe_from_peec_api(
         for prompt in metadata.get("prompts", [])
         if isinstance(prompt, dict) and prompt.get("id")
     }
+    models_by_id = {
+        model["id"]: normalise_text(model.get("name") or model.get("id"))
+        for model in metadata.get("models", [])
+        if isinstance(model, dict) and model.get("id")
+    }
     topics_by_id = {
         topic["id"]: normalise_text(topic.get("name"))
         for topic in metadata.get("topics", [])
@@ -142,11 +147,22 @@ def build_dataframe_from_peec_api(
             continue
         prompt_ref = item.get("prompt", {})
         model_ref = item.get("model", {})
-        prompt_id = normalise_text(prompt_ref.get("id") if isinstance(prompt_ref, dict) else "")
-        model_id = normalise_text(model_ref.get("id") if isinstance(model_ref, dict) else "")
+        topic_ref = item.get("topic", {})
+        prompt_id = normalise_text(
+            item.get("prompt_id")
+            or (prompt_ref.get("id") if isinstance(prompt_ref, dict) else prompt_ref)
+        )
+        model_id = normalise_text(
+            item.get("model_id")
+            or (model_ref.get("id") if isinstance(model_ref, dict) else model_ref)
+        )
         prompt_meta = prompts_by_id.get(prompt_id, {})
         topic_meta = prompt_meta.get("topic", {}) if isinstance(prompt_meta, dict) else {}
-        topic_id = normalise_text(topic_meta.get("id") if isinstance(topic_meta, dict) else "")
+        topic_id = normalise_text(
+            item.get("topic_id")
+            or (topic_ref.get("id") if isinstance(topic_ref, dict) else topic_ref)
+            or (topic_meta.get("id") if isinstance(topic_meta, dict) else "")
+        )
         prompt_messages = prompt_meta.get("messages", []) if isinstance(prompt_meta, dict) else []
         prompt_content = ""
         if isinstance(prompt_messages, list):
@@ -156,6 +172,27 @@ def build_dataframe_from_peec_api(
                 prompt_content = normalise_text(message.get("content"))
                 if prompt_content:
                     break
+        prompt_value = (
+            prompt_content
+            or normalise_text(prompt_meta.get("query") or prompt_meta.get("name") or prompt_meta.get("prompt"))
+            or normalise_text(prompt_ref.get("name") if isinstance(prompt_ref, dict) else prompt_ref)
+            or normalise_text(item.get("prompt_name") or item.get("query"))
+            or (f"Prompt {prompt_id}" if prompt_id else "Unmapped prompt")
+        )
+        topic_value = (
+            topics_by_id.get(topic_id)
+            or normalise_text(topic_ref.get("name") if isinstance(topic_ref, dict) else topic_ref)
+            or normalise_text(topic_meta.get("name") if isinstance(topic_meta, dict) else "")
+            or normalise_text(item.get("topic_name"))
+            or "Uncategorised"
+        )
+        model_value = (
+            models_by_id.get(model_id)
+            or normalise_text(model_ref.get("name") if isinstance(model_ref, dict) else model_ref)
+            or normalise_text(item.get("model_name"))
+            or model_id
+            or "Unknown model"
+        )
         tag_values: list[str] = []
         for tag in prompt_meta.get("tags", []) if isinstance(prompt_meta, dict) else []:
             if not isinstance(tag, dict):
@@ -180,14 +217,13 @@ def build_dataframe_from_peec_api(
                 "project": project_name or project_id or "Current project",
                 "project_id": project_id or "",
                 "project_status": project_status,
-                "topic": topics_by_id.get(topic_id, normalise_text(topic_meta.get("name") if isinstance(topic_meta, dict) else "")),
-                "prompt": prompt_content
-                or normalise_text(prompt_meta.get("query") or prompt_meta.get("name") or prompt_meta.get("prompt")),
+                "topic": topic_value,
+                "prompt": prompt_value,
                 "url": url,
                 "source_domain": source_domain,
                 "source_type": source_type,
-                "model": model_id,
-                "date": format_date(item.get("date")),
+                "model": model_value,
+                "date": format_date(item.get("date") or item.get("day")),
                 "competitor": competitor,
                 "tag": " | ".join(sorted(set(tag_values))),
                 "usage_count": coerce_positive_number(item.get("usage_count"), default=1.0),
@@ -247,6 +283,9 @@ def normalise_peec_data(
         working["url"].map(extract_domain),
     )
     working["date"] = pd.to_datetime(working["date"], errors="coerce").dt.normalize()
+    working["topic"] = working["topic"].where(working["topic"] != "", "Uncategorised")
+    working["prompt"] = working["prompt"].where(working["prompt"] != "", "Unmapped prompt")
+    working["model"] = working["model"].where(working["model"] != "", "Unknown model")
 
     derived_source_type = np.select(
         [
@@ -277,19 +316,25 @@ def normalise_peec_data(
     )
 
     before_rows = len(working)
+    blank_field_counts = {
+        "date": int(working["date"].isna().sum()),
+        "topic": int((working["topic"] == "").sum()),
+        "prompt": int((working["prompt"] == "").sum()),
+        "url": int((working["url"] == "").sum()),
+        "source_domain": int((working["source_domain"] == "").sum()),
+        "model": int((working["model"] == "").sum()),
+    }
     working = working.dropna(subset=["date"])
     working = working[
-        (working["topic"] != "")
-        & (working["prompt"] != "")
-        & (working["url"] != "")
+        (working["url"] != "")
         & (working["source_domain"] != "")
-        & (working["model"] != "")
     ].copy()
     dropped_rows = before_rows - len(working)
 
     metadata = {
         "row_count": len(working),
         "dropped_rows": dropped_rows,
+        "blank_field_counts": blank_field_counts,
         "min_date": working["date"].min(),
         "max_date": working["date"].max(),
         "project_names": sorted([project for project in working["project"].unique().tolist() if project]),
