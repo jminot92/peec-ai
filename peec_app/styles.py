@@ -136,20 +136,18 @@ def render_intro() -> None:
     st.markdown(
         """
         <div class="hero-panel">
-            <div style="font-size:0.78rem; text-transform:uppercase; letter-spacing:0.08em; color:#7d6d62; font-weight:700;">PEEC Brief Builder</div>
-            <h1 style="margin:0.4rem 0 0.5rem 0;">Build client briefs from PEEC data, one module at a time</h1>
+            <div style="font-size:0.78rem; text-transform:uppercase; letter-spacing:0.08em; color:#7d6d62; font-weight:700;">PEEC AI Audit</div>
+            <h1 style="margin:0.4rem 0 0.5rem 0;">Review AI visibility, competitor pressure, and content format gaps from live PEEC data</h1>
             <p style="margin:0; color:var(--peec-muted); max-width:900px;">
-                The app stays connected to PEEC, but each insight now lives in its own Python file so briefs can be built and edited independently.
+                Use the fetched PEEC dataset to assess visibility, substitution risk, authority concentration, prompt coverage, and export a slide brief package for client reporting.
             </p>
             <div class="chip-row">
-                <span class="chip chip-accent">Brief 01: Visibility trend</span>
-                <span class="chip chip-accent">Brief 02: Visibility snapshot</span>
-                <span class="chip chip-accent">Brief 03: Domain types</span>
-                <span class="chip chip-accent">Brief 04: URL types</span>
-                <span class="chip chip-accent">Brief 05: Slide package</span>
-                <span class="chip">PEEC API only</span>
-                <span class="chip">Exportable table</span>
-                <span class="chip">PNG chart output</span>
+                <span class="chip chip-accent">Live PEEC API</span>
+                <span class="chip">Visibility</span>
+                <span class="chip">Competitive risk</span>
+                <span class="chip">Domain and URL mix</span>
+                <span class="chip">Prompt coverage</span>
+                <span class="chip">Slide brief package</span>
             </div>
         </div>
         """,

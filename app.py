@@ -51,7 +51,7 @@ def resolve_fetch_dates(option: str, today: pd.Timestamp) -> tuple[pd.Timestamp,
 
 def main() -> None:
     st.set_page_config(
-        page_title="PEEC Brief Builder",
+        page_title="PEEC AI Audit",
         page_icon="A",
         layout="wide",
         initial_sidebar_state="expanded",
