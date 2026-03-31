@@ -8,9 +8,13 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import pandas as pd
 import streamlit as st
 
+from peec_app.briefs.authority_concentration_risk import build_authority_concentration_risk_brief
+from peec_app.briefs.competitor_substitution_risk import build_competitor_substitution_risk_brief
 from peec_app.briefs.domain_types import build_domain_types_brief
+from peec_app.briefs.owned_asset_concentration import build_owned_asset_concentration_brief
 from peec_app.briefs.prompt_visibility import build_prompt_coverage_table
 from peec_app.briefs.url_types import build_url_types_brief
+from peec_app.briefs.third_party_dependence import build_third_party_dependence_brief
 from peec_app.briefs.visibility import build_visibility_brief
 from peec_app.briefs.visibility_common import competitor_options, default_competitor_selection
 from peec_app.briefs.visibility_snapshot import available_snapshot_dates, build_visibility_snapshot_brief
@@ -89,6 +93,10 @@ def build_slide_brief_package(
         if latest_snapshot is not None
         else None
     )
+    third_party_brief = build_third_party_dependence_brief(df)
+    substitution_brief = build_competitor_substitution_risk_brief(df, project_name)
+    authority_brief = build_authority_concentration_risk_brief(df)
+    owned_asset_brief = build_owned_asset_concentration_brief(df)
     domain_brief = build_domain_types_brief(df)
     url_brief = build_url_types_brief(df)
     prompt_coverage_table = build_prompt_coverage_table(df, project_name)
@@ -125,6 +133,31 @@ def build_slide_brief_package(
 {dataframe_to_csv_block(snapshot_brief.summary_table if snapshot_brief is not None else pd.DataFrame())}
 ```
 
+## Third-Party Dependence Summary
+```csv
+{dataframe_to_csv_block(third_party_brief.summary_table)}
+```
+
+## Competitor Substitution Risk Summary
+```csv
+{dataframe_to_csv_block(substitution_brief.summary_table)}
+```
+
+## Competitor Substitution Prompt Detail
+```csv
+{dataframe_to_csv_block(substitution_brief.risky_prompt_table, max_rows=20)}
+```
+
+## Authority Concentration Risk Summary
+```csv
+{dataframe_to_csv_block(authority_brief.summary_table, max_rows=20)}
+```
+
+## Owned Asset Concentration Summary
+```csv
+{dataframe_to_csv_block(owned_asset_brief.summary_table, max_rows=20)}
+```
+
 ## Domain Types Summary
 ```csv
 {dataframe_to_csv_block(domain_brief.summary_table)}
@@ -159,6 +192,26 @@ If this table is not present, Claude should flag that prompt-level specificity i
         f"{safe_project}-visibility-snapshot-summary.xlsx": dataframe_to_excel_bytes(
             snapshot_brief.summary_table if snapshot_brief is not None else pd.DataFrame(),
             "Visibility snapshot",
+        ),
+        f"{safe_project}-third-party-dependence.xlsx": dataframe_to_excel_bytes(
+            third_party_brief.summary_table,
+            "Third-party dependence",
+        ),
+        f"{safe_project}-competitor-substitution-risk-summary.xlsx": dataframe_to_excel_bytes(
+            substitution_brief.summary_table,
+            "Substitution risk",
+        ),
+        f"{safe_project}-competitor-substitution-risk-prompts.xlsx": dataframe_to_excel_bytes(
+            substitution_brief.risky_prompt_table,
+            "Substitution prompts",
+        ),
+        f"{safe_project}-authority-concentration-risk.xlsx": dataframe_to_excel_bytes(
+            authority_brief.summary_table,
+            "Authority concentration",
+        ),
+        f"{safe_project}-owned-asset-concentration.xlsx": dataframe_to_excel_bytes(
+            owned_asset_brief.summary_table,
+            "Owned asset concentration",
         ),
         f"{safe_project}-domain-types-summary.xlsx": dataframe_to_excel_bytes(
             domain_brief.summary_table,
