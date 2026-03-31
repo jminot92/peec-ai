@@ -230,6 +230,10 @@ def render_platform_visibility_brief(df: pd.DataFrame, owned_label: str) -> None
 
     if brief.summary_table["Platform"].nunique() == 1:
         st.caption("Only one platform is in the current filter set, so this view is not showing a cross-platform comparison.")
+    if float(brief.summary_table[owned_share_column].max()) <= 0:
+        st.warning(
+            "No owned cited URLs were detected in the current platform view. That usually means either no platform cited the client domain in this window, or the owned-domain mapping still needs tightening for this project."
+        )
 
     if brief.preview_chart_png:
         st.image(brief.preview_chart_png, use_container_width=True)

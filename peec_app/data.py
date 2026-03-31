@@ -57,6 +57,39 @@ def lookup_competitor(domain: str, brand_domains: dict[str, str]) -> str:
 
 
 
+def brand_name_matches_project_name(brand_name: str, project_name: str) -> bool:
+    brand_key = normalise_name_key(brand_name)
+    project_key = normalise_name_key(project_name)
+    if not brand_key or not project_key:
+        return False
+    if (
+        brand_key == project_key
+        or brand_key.startswith(f"{project_key} ")
+        or brand_key.endswith(f" {project_key}")
+        or project_key.startswith(f"{brand_key} ")
+        or project_key.endswith(f" {brand_key}")
+    ):
+        return True
+
+    brand_tokens = set(brand_key.split())
+    project_tokens = set(project_key.split())
+    if not brand_tokens or not project_tokens:
+        return False
+
+    shared_tokens = brand_tokens & project_tokens
+    if len(project_tokens) >= 2 and project_tokens.issubset(brand_tokens):
+        return True
+    if len(brand_tokens) >= 2 and brand_tokens.issubset(project_tokens):
+        return True
+
+    overlap_ratio = max(
+        len(shared_tokens) / len(project_tokens),
+        len(shared_tokens) / len(brand_tokens),
+    )
+    return len(shared_tokens) >= 2 and overlap_ratio >= 0.66
+
+
+
 def infer_owned_domains(
     brands: list[dict[str, object]],
     owned_domains: list[str],
@@ -67,13 +100,11 @@ def infer_owned_domains(
         for domain in owned_domains
         if extract_domain(domain)
     }
-    project_key = normalise_name_key(project_name)
 
     for brand in brands:
         if not isinstance(brand, dict):
             continue
         brand_name = normalise_text(brand.get("name"))
-        brand_key = normalise_name_key(brand_name)
         raw_domains = brand.get("domains", [])
         if not isinstance(raw_domains, list):
             continue
@@ -89,13 +120,7 @@ def infer_owned_domains(
             domain_matches(domain, effective_owned_domains)
             for domain in brand_domains
         )
-        name_matches_project = bool(project_key) and bool(brand_key) and (
-            brand_key == project_key
-            or brand_key.startswith(f"{project_key} ")
-            or brand_key.endswith(f" {project_key}")
-            or project_key.startswith(f"{brand_key} ")
-            or project_key.endswith(f" {brand_key}")
-        )
+        name_matches_project = brand_name_matches_project_name(brand_name, project_name)
         if is_explicitly_owned or name_matches_project:
             effective_owned_domains.update(brand_domains)
 
