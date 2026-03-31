@@ -21,6 +21,9 @@ from peec_app.briefs.visibility_snapshot import available_snapshot_dates, build_
 
 
 PROMPT_PATH = Path(__file__).with_name("prompt.md")
+DEFAULT_PROMPT_TARGET = "250"
+DEFAULT_TRACKING_COST = "GBP 75/month"
+DEFAULT_HOURLY_RATE = "GBP 112.50/hour"
 
 
 @dataclass
@@ -33,9 +36,8 @@ class SlideBriefPackage:
 
 
 
-def load_prompt_markdown(project_name: str) -> str:
-    prompt = PROMPT_PATH.read_text(encoding="utf-8").strip()
-    return prompt.replace("{{CLIENT_NAME}}", project_name)
+def load_prompt_template() -> str:
+    return PROMPT_PATH.read_text(encoding="utf-8").strip()
 
 
 
@@ -72,6 +74,13 @@ def build_bundle_zip(
     return buffer.getvalue()
 
 
+def apply_template_replacements(template: str, replacements: dict[str, str]) -> str:
+    rendered = template
+    for placeholder, value in replacements.items():
+        rendered = rendered.replace(placeholder, value)
+    return rendered
+
+
 
 def build_slide_brief_package(
     df: pd.DataFrame,
@@ -101,24 +110,10 @@ def build_slide_brief_package(
     url_brief = build_url_types_brief(df)
     prompt_coverage_table = build_prompt_coverage_table(df, project_name)
 
-    prompt_markdown = load_prompt_markdown(project_name)
-    context = f"""# Claude Slide Brief Package
-
-## Instructions For Claude
-{prompt_markdown}
-
-## Working Context
-- Project: {project_name}
-- Window: {window[0]} to {window[1]}
-- Rows in current filtered dataset: {len(df):,}
-- Prompts in current filtered dataset: {df['prompt'].nunique():,}
-- Models filter: {format_filter_values(selected_models)}
-- Topics filter: {format_filter_values(selected_topics)}
-- Tags filter: {format_filter_values(selected_tags)}
-- Competitors used for visibility tables: {format_filter_values(selected_competitors)}
-- Latest snapshot date: {latest_snapshot.date().isoformat() if latest_snapshot is not None else 'None'}
-
-## AI Visibility Trend Summary
+    template = load_prompt_template()
+    competitor_1 = selected_competitors[0] if len(selected_competitors) >= 1 else "None"
+    competitor_2 = selected_competitors[1] if len(selected_competitors) >= 2 else "None"
+    working_context_tables = f"""## AI Visibility Trend Summary
 ```csv
 {dataframe_to_csv_block(visibility_brief.summary_table)}
 ```
@@ -176,6 +171,25 @@ If this table is not present, Claude should flag that prompt-level specificity i
 {dataframe_to_csv_block(prompt_coverage_table, max_rows=50)}
 ```
 """
+    context = apply_template_replacements(
+        template,
+        {
+            "{client}": project_name,
+            "{competitor_1}": competitor_1,
+            "{competitor_2}": competitor_2,
+            "{window}": f"{window[0]} to {window[1]}",
+            "{prompt_count}": f"{df['prompt'].nunique():,}",
+            "{prompt_target}": DEFAULT_PROMPT_TARGET,
+            "{tracking_cost}": DEFAULT_TRACKING_COST,
+            "{hourly_rate}": DEFAULT_HOURLY_RATE,
+            "- Rows in current filtered dataset: [from package]": f"- Rows in current filtered dataset: {len(df):,}",
+            "- Models filter: All": f"- Models filter: {format_filter_values(selected_models)}",
+            "- Topics filter: All": f"- Topics filter: {format_filter_values(selected_topics)}",
+            "- Tags filter: All": f"- Tags filter: {format_filter_values(selected_tags)}",
+            "- Latest snapshot date: [from package]": f"- Latest snapshot date: {latest_snapshot.date().isoformat() if latest_snapshot is not None else 'None'}",
+            "[DATA TABLES ARE APPENDED HERE BY THE PACKAGING STEP]": working_context_tables.strip(),
+        },
+    )
 
     safe_project = "-".join(project_name.lower().split()) or "project"
     markdown_file_name = f"{safe_project}-slide-brief-package.md"
@@ -249,7 +263,7 @@ def render_slide_brief_package(
 ) -> None:
     st.subheader("Slide brief package")
     st.caption(
-        "Download a Claude-ready package with the markdown brief plus Excel files for the filtered dataset and current visibility, domain and URL summaries."
+        "Download a Claude-ready package with the CMO deck template plus Excel files for the filtered dataset and current strategic insight summaries."
     )
 
     package = build_slide_brief_package(
