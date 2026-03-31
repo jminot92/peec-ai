@@ -7,16 +7,75 @@ import pandas as pd
 import streamlit.components.v1 as components
 
 
+def _dataframe_to_tsv(dataframe: pd.DataFrame) -> str:
+    return dataframe.to_csv(index=False, sep="\t")
+
+
+def _dataframe_to_html_table(dataframe: pd.DataFrame) -> str:
+    header_cells = "".join(
+        f"""
+        <th style="
+          border:1px solid #ffffff;
+          padding:8px 10px;
+          text-align:left;
+          font-family:Arial, sans-serif;
+          font-size:11pt;
+          font-weight:700;
+          color:#ffffff;
+          background:#e22a8a;
+          white-space:nowrap;
+        ">{html.escape(str(column))}</th>
+        """
+        for column in dataframe.columns
+    )
+    body_rows: list[str] = []
+    for _, row in dataframe.fillna("").iterrows():
+        cells = "".join(
+            f"""
+            <td style="
+              border:1px solid #ffffff;
+              padding:8px 10px;
+              text-align:left;
+              font-family:Arial, sans-serif;
+              font-size:10.5pt;
+              color:#ffffff;
+              background:#1a1f3d;
+              vertical-align:top;
+            ">{html.escape(str(value))}</td>
+            """
+            for value in row.tolist()
+        )
+        body_rows.append(f"<tr>{cells}</tr>")
+    body_html = "".join(body_rows)
+    return f"""
+    <table style="
+      border-collapse:collapse;
+      border-spacing:0;
+      background:#1a1f3d;
+      color:#ffffff;
+    ">
+      <thead>
+        <tr>{header_cells}</tr>
+      </thead>
+      <tbody>
+        {body_html}
+      </tbody>
+    </table>
+    """
+
+
 def render_copy_table_button(
     dataframe: pd.DataFrame,
     *,
     button_label: str,
     key: str,
 ) -> None:
-    table_text = dataframe.to_csv(index=False, sep="\t")
+    table_text = _dataframe_to_tsv(dataframe)
+    table_html = _dataframe_to_html_table(dataframe)
     escaped_label = html.escape(button_label)
     escaped_key = html.escape(key)
     text_payload = json.dumps(table_text)
+    html_payload = json.dumps(table_html)
     html_block = f"""
     <div style="display:flex;align-items:center;gap:10px;">
       <button
@@ -38,13 +97,25 @@ def render_copy_table_button(
     </div>
     <script>
       const textToCopy = {text_payload};
+      const htmlToCopy = {html_payload};
       const button = document.getElementById("copy-btn-{escaped_key}");
       const status = document.getElementById("copy-status-{escaped_key}");
 
       async function copyText() {{
         try {{
-          await navigator.clipboard.writeText(textToCopy);
-          status.textContent = "Copied";
+          if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {{
+            const clipboardItem = new ClipboardItem({{
+              "text/html": new Blob([htmlToCopy], {{ type: "text/html" }}),
+              "text/plain": new Blob([textToCopy], {{ type: "text/plain" }})
+            }});
+            await navigator.clipboard.write([clipboardItem]);
+            status.textContent = "HTML table copied";
+          }} else if (navigator.clipboard && navigator.clipboard.writeText) {{
+            await navigator.clipboard.writeText(textToCopy);
+            status.textContent = "Plain text copied";
+          }} else {{
+            throw new Error("Clipboard API unavailable");
+          }}
         }} catch (error) {{
           const fallback = document.createElement("textarea");
           fallback.value = textToCopy;
@@ -52,14 +123,14 @@ def render_copy_table_button(
           fallback.select();
           document.execCommand("copy");
           document.body.removeChild(fallback);
-          status.textContent = "Copied";
+          status.textContent = "Plain text copied";
         }}
         setTimeout(() => {{
           status.textContent = "";
-        }}, 2000);
+        }}, 2200);
       }}
 
       button.addEventListener("click", copyText);
     </script>
     """
-    components.html(html_block, height=50)
+    components.html(html_block, height=54)
