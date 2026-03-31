@@ -5,9 +5,13 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
+from peec_app.briefs.authority_concentration_risk import render_authority_concentration_risk_brief
+from peec_app.briefs.competitor_substitution_risk import render_competitor_substitution_risk_brief
 from peec_app.briefs.domain_types import render_domain_types_brief
+from peec_app.briefs.owned_asset_concentration import render_owned_asset_concentration_brief
 from peec_app.briefs.prompt_visibility import render_prompt_visibility_brief
 from peec_app.briefs.slide_brief.builder import render_slide_brief_package
+from peec_app.briefs.third_party_dependence import render_third_party_dependence_brief
 from peec_app.briefs.url_types import render_url_types_brief
 from peec_app.briefs.visibility import render_visibility_brief
 from peec_app.briefs.visibility_snapshot import render_visibility_snapshot_brief
@@ -240,10 +244,25 @@ def main() -> None:
         st.warning("The current model/topic/tag filters removed every row.")
         st.stop()
 
-    visibility_tab, snapshot_tab, domain_types_tab, url_types_tab, prompt_visibility_tab, slide_package_tab = st.tabs(
+    (
+        visibility_tab,
+        snapshot_tab,
+        third_party_tab,
+        substitution_tab,
+        authority_tab,
+        owned_assets_tab,
+        domain_types_tab,
+        url_types_tab,
+        prompt_visibility_tab,
+        slide_package_tab,
+    ) = st.tabs(
         [
             "Visibility trend",
             "Visibility snapshot",
+            "Third-party dependence",
+            "Substitution risk",
+            "Authority concentration",
+            "Owned asset concentration",
             "Domain types",
             "URL types",
             "Prompt visibility",
@@ -256,6 +275,18 @@ def main() -> None:
 
     with snapshot_tab:
         render_visibility_snapshot_brief(filtered_df, loaded_project.get("name", "Owned brand"))
+
+    with third_party_tab:
+        render_third_party_dependence_brief(filtered_df)
+
+    with substitution_tab:
+        render_competitor_substitution_risk_brief(filtered_df, loaded_project.get("name", "Owned brand"))
+
+    with authority_tab:
+        render_authority_concentration_risk_brief(filtered_df)
+
+    with owned_assets_tab:
+        render_owned_asset_concentration_brief(filtered_df)
 
     with domain_types_tab:
         render_domain_types_brief(filtered_df)
