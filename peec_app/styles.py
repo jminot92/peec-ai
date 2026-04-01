@@ -63,27 +63,6 @@ def inject_styles() -> None:
             margin-bottom: 1rem;
         }
 
-        .chip-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            margin-top: 0.8rem;
-        }
-
-        .chip {
-            border-radius: 999px;
-            padding: 0.32rem 0.72rem;
-            font-size: 0.82rem;
-            font-weight: 600;
-            background: rgba(19, 38, 47, 0.06);
-            color: var(--peec-ink);
-        }
-
-        .chip-accent {
-            background: var(--peec-accent-soft);
-            color: var(--peec-accent);
-        }
-
         .placeholder-panel {
             background: var(--peec-card);
             border: 1px solid var(--peec-line);
@@ -141,14 +120,6 @@ def render_intro() -> None:
             <p style="margin:0; color:var(--peec-muted); max-width:900px;">
                 Use the fetched PEEC dataset to assess visibility, substitution risk, authority concentration, prompt coverage, and export a slide brief package for client reporting.
             </p>
-            <div class="chip-row">
-                <span class="chip chip-accent">Live PEEC API</span>
-                <span class="chip">Visibility</span>
-                <span class="chip">Competitive risk</span>
-                <span class="chip">Domain and URL mix</span>
-                <span class="chip">Prompt coverage</span>
-                <span class="chip">Slide brief package</span>
-            </div>
         </div>
         """,
         unsafe_allow_html=True,
